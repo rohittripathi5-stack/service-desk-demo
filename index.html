@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Acme Employee Center (Demo)</title>
+<style>
+  :root{--nav:#1b2a3a;--p:#0b6b5f;--p2:#0f8d7d;--bg:#f2f5f7;--card:#fff;--t:#1d2733;--m:#617080;--b:#dbe2e8;--warn:#b25e00;--bad:#b3261e;--ok:#1e7a3a}
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--t)}
+  header{background:var(--nav);color:#fff;display:flex;align-items:center;gap:24px;padding:0 24px;height:56px}
+  header .logo{font-weight:700;letter-spacing:.3px}
+  header nav a{color:#cfd9e2;text-decoration:none;margin-right:18px;font-size:14px}
+  header nav a.on{color:#fff;border-bottom:2px solid #5fe0cf;padding-bottom:6px}
+  header .me{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px}
+  .av{width:30px;height:30px;border-radius:50%;background:var(--p2);display:grid;place-items:center;font-weight:600}
+  #banner{display:none;background:#fff3e0;border-bottom:1px solid #f0c27b;color:#6b3d00;padding:10px 24px;font-size:14px}
+  #banner.show{display:block}
+  #banner b{margin-right:6px}
+  .hero{background:linear-gradient(135deg,#0b6b5f,#124a63);color:#fff;padding:36px 24px 44px}
+  .hero h1{margin:0 0 6px;font-size:26px;font-weight:600}.hero p{margin:0 0 16px;opacity:.85}
+  .search{display:flex;max-width:640px;background:#fff;border-radius:8px;overflow:hidden}
+  .search input{flex:1;border:0;padding:14px 16px;font-size:15px;outline:none}
+  .search button{border:0;background:var(--p2);color:#fff;padding:0 20px;font-size:14px;cursor:pointer}
+  main{max-width:1180px;margin:-24px auto 40px;padding:0 24px}
+  .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+  .tile{background:var(--card);border:1px solid var(--b);border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .tile h3{margin:6px 0 4px;font-size:15px}.tile p{margin:0;color:var(--m);font-size:13px}
+  .ico{width:34px;height:34px;border-radius:8px;background:#e3f4f1;color:var(--p);display:grid;place-items:center;font-weight:700}
+  .grid{display:grid;grid-template-columns:2fr 1fr;gap:18px}
+  .card{background:var(--card);border:1px solid var(--b);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .card h2{margin:0;padding:14px 16px;font-size:15px;border-bottom:1px solid var(--b);display:flex;justify-content:space-between;align-items:center}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;color:var(--m);font-weight:600;padding:10px 16px;border-bottom:1px solid var(--b)}
+  td{padding:11px 16px;border-bottom:1px solid #edf1f4}
+  tbody tr{cursor:pointer}tbody tr:hover{background:#f6fafb}
+  tr.flash{animation:fl 2.5s ease-out}
+  @keyframes fl{0%{background:#c9f2ea}100%{background:transparent}}
+  .pill{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+  .p-prog{background:#e5f0ff;color:#0b4fb3}.p-wait{background:#fff3e0;color:var(--warn)}.p-done{background:#e4f5e9;color:var(--ok)}.p-new{background:#efe7fb;color:#5b2da8}
+  .side ul{list-style:none;margin:0;padding:6px 16px 12px}
+  .side li{padding:9px 0;border-bottom:1px solid #edf1f4;font-size:13px}.side li:last-child{border:0}
+  .side small{display:block;color:var(--m)}
+  #drawer{position:fixed;top:0;right:-460px;width:440px;height:100%;background:#fff;border-left:1px solid var(--b);box-shadow:-8px 0 24px rgba(0,0,0,.15);transition:right .25s;z-index:50;display:flex;flex-direction:column}
+  #drawer.open{right:0}
+  #drawer header{background:#fff;color:var(--t);border-bottom:1px solid var(--b);padding:0 18px;height:60px}
+  #drawer .body{padding:18px;overflow:auto;flex:1}
+  #drawer h4{margin:16px 0 8px;font-size:13px;color:var(--m);text-transform:uppercase;letter-spacing:.5px}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 10px;font-size:13px}.kv span:nth-child(odd){color:var(--m)}
+  .tl{border-left:2px solid var(--b);margin-left:6px;padding-left:14px}
+  .tl div{margin-bottom:12px;font-size:13px;position:relative}.tl div:before{content:"";position:absolute;left:-20px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--p2)}
+  .tl small{display:block;color:var(--m)}
+  .btn{border:0;background:var(--p);color:#fff;padding:9px 14px;border-radius:7px;font-size:13px;cursor:pointer}
+  .btn.o{background:#fff;color:var(--p);border:1px solid var(--p)}
+  #x{background:none;border:0;font-size:22px;cursor:pointer;margin-left:auto}
+  #ctl{position:fixed;left:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--b);border-radius:10px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.15);font-size:12px;width:270px}
+  #ctl.min{width:auto}#ctl.min .cb{display:none}
+  #ctl b{cursor:pointer}
+  #ctl select,#ctl input{width:100%;margin:5px 0;padding:6px;border:1px solid var(--b);border-radius:6px;font:inherit}
+  #ctl label{display:flex;gap:6px;align-items:center;margin-top:6px}
+  @media(max-width:900px){.tiles{grid-template-columns:repeat(2,1fr)}.grid{grid-template-columns:1fr}#drawer{width:100%}}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">Acme Employee Center</div>
+  <nav><a class="on" href="#">Home</a><a href="#">Get help</a><a href="#">Catalog</a><a href="#">Knowledge</a><a href="#">My requests</a></nav>
+  <div class="me"><span>Alex Morgan</span><div class="av">AM</div></div>
+</header>
+<div id="banner"><b>Major incident MI-2041:</b> Some employees cannot open the payroll portal. Payments are not affected. Next update by 10:30 UTC.</div>
+<section class="hero">
+  <h1>How can we help, Alex?</h1>
+  <p>Search for answers, request equipment or software, or ask the AI assistant in the chat window.</p>
+  <div class="search"><input placeholder="Search knowledge, catalog and requests"><button>Search</button></div>
+</section>
+<main>
+  <div class="tiles">
+    <div class="tile"><div class="ico">?</div><h3>Get help</h3><p>Report an issue or ask a question</p></div>
+    <div class="tile"><div class="ico">+</div><h3>Request something</h3><p>Hardware, software, access</p></div>
+    <div class="tile"><div class="ico">i</div><h3>Knowledge</h3><p>Guides and policies</p></div>
+    <div class="tile"><div class="ico">#</div><h3>My requests</h3><p>Track everything in one place</p></div>
+  </div>
+  <div class="grid">
+    <div class="card">
+      <h2>My open items <span style="font-weight:400;color:var(--m);font-size:12px">Click a row to drill down</span></h2>
+      <table><thead><tr><th>Number</th><th>Short description</th><th>Type</th><th>State</th><th>Updated</th></tr></thead><tbody id="rows"></tbody></table>
+    </div>
+    <div class="card side">
+      <h2>Service status</h2>
+      <ul id="status">
+        <li>VPN <small>No known issues</small></li>
+        <li>Email and calendar <small>No known issues</small></li>
+        <li id="st-pay">Payroll portal <small>No known issues</small></li>
+        <li>Teams <small>No known issues</small></li>
+      </ul>
+    </div>
+  </div>
+</main>
+
+<aside id="drawer" aria-hidden="true">
+  <header><b id="d-num"></b><button id="x" aria-label="Close">&times;</button></header>
+  <div class="body">
+    <h3 id="d-title" style="margin:0 0 6px"></h3><span id="d-state" class="pill"></span>
+    <h4>Details</h4><div class="kv" id="d-kv"></div>
+    <h4>Activity</h4><div class="tl" id="d-tl"></div>
+    <div style="margin-top:18px;display:flex;gap:8px"><button class="btn" id="ask">Copy question for the AI assistant</button></div>
+    <p id="ask-note" style="font-size:12px;color:var(--m)"></p>
+  </div>
+</aside>
+
+<div id="ctl">
+  <b id="ctl-t">Presenter controls (click to minimise)</b>
+  <div class="cb">
+    <label><input type="checkbox" id="mi"> Show payroll major incident</label>
+    <select id="ct"><option>INC</option><option>REQ</option><option>ACC</option><option>HR</option><option>FAC</option><option>LR</option></select>
+    <input id="cn" placeholder="Number from the chat, e.g. INC1000234">
+    <input id="cd" placeholder="Short description">
+    <button class="btn" id="add" style="width:100%">Add case to list</button>
+    <div style="color:#617080;margin-top:6px">Demo data. Add the number the agent just gave, so the portal matches the chat.</div>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cases=[
+    {n:"INC1004217",t:"VPN disconnects every few minutes",type:"Incident",s:"In progress",c:"p-prog",u:"12 min ago",kv:{Priority:"P3",Service:"VPN","Assigned group":"Network Services",Opened:"Today 08:41"},tl:["Incident created by the AI assistant|Symptoms and steps tried attached","Assigned to Network Services|Gateway logs requested","Update: client version 5.1 flagged as outdated|Recommend update to 5.3"]},
+    {n:"REQ2000118",t:"27 inch QHD monitor",type:"Request",s:"Awaiting approval",c:"p-wait",u:"1 hr ago",kv:{Item:"27 inch QHD monitor","Deliver to":"Home office, Pune",Approver:"Meera Shah (manager)","Stock":"Restock in 2 to 3 weeks"},tl:["Request submitted via the AI assistant","Manager approval requested|Non-standard item"]},
+    {n:"ACC5000412",t:"Access to finance reporting workspace",type:"Access",s:"Approval pending",c:"p-wait",u:"3 hr ago",kv:{Resource:"Finance reporting workspace",Level:"Read",Approvers:"Line manager, Resource owner","Reason":"Quarter-end client reporting"},tl:["Access requested|Not granted until both approvals complete","Sent to line manager"]},
+    {n:"HR3000052",t:"Employment verification letter",type:"HR",s:"Fulfilled",c:"p-done",u:"Yesterday",kv:{Letter:"Employment verification",Delivery:"Company email","Team":"HR Shared Services"},tl:["Request submitted","Letter issued and emailed"]},
+    {n:"FAC4000031",t:"Meeting room 4B display not working",type:"Facilities",s:"Assigned",c:"p-prog",u:"2 days ago",kv:{Location:"HQ, meeting room 4B",Team:"Workplace Services","Response target":"Same working day"},tl:["Reported via the AI assistant","Assigned to Workplace Services"]},
+    {n:"LR6000007",t:"Laptop refresh, courier swap",type:"Request",s:"Scheduled",c:"p-new",u:"3 days ago",kv:{Slot:"Courier, afternoon","Pre-swap checks":"Backup verified, key escrowed","Device":"Laptop, 4 years old"},tl:["Slot booked outside your travel dates","Backup verified"]}
+  ];
+  var rows=document.getElementById("rows");
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  function render(flash){
+    rows.innerHTML="";
+    cases.forEach(function(k,i){
+      var tr=document.createElement("tr");if(flash===i)tr.className="flash";
+      tr.innerHTML="<td><b>"+esc(k.n)+"</b></td><td>"+esc(k.t)+"</td><td>"+esc(k.type)+"</td><td><span class='pill "+k.c+"'>"+esc(k.s)+"</span></td><td>"+esc(k.u)+"</td>";
+      tr.onclick=function(){open(k)};rows.appendChild(tr);
+    });
+  }
+  var dr=document.getElementById("drawer"),cur=null;
+  function open(k){
+    cur=k;
+    document.getElementById("d-num").textContent=k.n;
+    document.getElementById("d-title").textContent=k.t;
+    var st=document.getElementById("d-state");st.textContent=k.s;st.className="pill "+k.c;
+    var kv=document.getElementById("d-kv");kv.innerHTML="";
+    Object.keys(k.kv).forEach(function(a){kv.innerHTML+="<span>"+esc(a)+"</span><span>"+esc(k.kv[a])+"</span>"});
+    var tl=document.getElementById("d-tl");tl.innerHTML="";
+    k.tl.forEach(function(x){var p=x.split("|");tl.innerHTML+="<div>"+esc(p[0])+(p[1]?"<small>"+esc(p[1])+"</small>":"")+"</div>"});
+    document.getElementById("ask-note").textContent="";
+    dr.classList.add("open");dr.setAttribute("aria-hidden","false");
+  }
+  document.getElementById("x").onclick=function(){dr.classList.remove("open")};
+  document.getElementById("ask").onclick=function(){
+    if(!cur)return;
+    var q="What is the status of "+cur.n+" ("+cur.t+")?";
+    var note=document.getElementById("ask-note");
+    (navigator.clipboard?navigator.clipboard.writeText(q):Promise.reject()).then(function(){note.textContent="Copied. Paste it into the chat window."},function(){note.textContent="Ask the chat: "+q});
+  };
+  var mi=document.getElementById("mi");
+  mi.onchange=function(){
+    document.getElementById("banner").classList.toggle("show",mi.checked);
+    document.getElementById("st-pay").innerHTML=mi.checked?"Payroll portal <small style='color:#b25e00'>Major incident MI-2041, investigating</small>":"Payroll portal <small>No known issues</small>";
+  };
+  document.getElementById("ctl-t").onclick=function(){document.getElementById("ctl").classList.toggle("min")};
+  var map={INC:["Incident","p-new","New"],REQ:["Request","p-new","Submitted"],ACC:["Access","p-wait","Approval pending"],HR:["HR","p-new","Submitted"],FAC:["Facilities","p-prog","Assigned"],LR:["Request","p-new","Scheduled"]};
+  document.getElementById("add").onclick=function(){
+    var pre=document.getElementById("ct").value,num=document.getElementById("cn").value.trim()||(pre+(1000000+Math.floor(Math.random()*899999)));
+    var d=document.getElementById("cd").value.trim()||"Created from the AI assistant",m=map[pre];
+    cases.unshift({n:num,t:d,type:m[0],s:m[2],c:m[1],u:"just now",kv:{Created:"Via AI assistant","Employee":"Alex Morgan",State:m[2]},tl:["Created by the AI assistant|Details and steps tried attached"]});
+    render(0);document.getElementById("cn").value="";document.getElementById("cd").value="";
+  };
+  render();
+})();
+</script>
+</body>
+</html>
