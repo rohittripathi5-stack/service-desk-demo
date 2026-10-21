@@ -65,11 +65,11 @@
 <header>
   <div class="logo">Acme Employee Center</div>
   <nav><a class="on" href="#">Home</a><a href="#">Get help</a><a href="#">Catalog</a><a href="#">Knowledge</a><a href="#">My requests</a></nav>
-  <div class="me"><span>Alex Morgan</span><div class="av">AM</div></div>
+  <div class="me"><span>Guest (not signed in)</span><div class="av">?</div></div>
 </header>
 <div id="banner"><b>Major incident MI-2041:</b> Some employees cannot open the payroll portal. Payments are not affected. Next update by 10:30 UTC.</div>
 <section class="hero">
-  <h1>How can we help, Alex?</h1>
+  <h1>How can we help?</h1>
   <p>Search for answers, request equipment or software, or ask the AI assistant in the chat window.</p>
   <div class="search"><input placeholder="Search knowledge, catalog and requests"><button>Search</button></div>
 </section>
@@ -122,18 +122,12 @@
 
 <script>
 (function(){
-  var cases=[
-    {n:"INC1004217",t:"VPN disconnects every few minutes",type:"Incident",s:"In progress",c:"p-prog",u:"12 min ago",kv:{Priority:"P3",Service:"VPN","Assigned group":"Network Services",Opened:"Today 08:41"},tl:["Incident created by the AI assistant|Symptoms and steps tried attached","Assigned to Network Services|Gateway logs requested","Update: client version 5.1 flagged as outdated|Recommend update to 5.3"]},
-    {n:"REQ2000118",t:"27 inch QHD monitor",type:"Request",s:"Awaiting approval",c:"p-wait",u:"1 hr ago",kv:{Item:"27 inch QHD monitor","Deliver to":"Home office, Pune",Approver:"Meera Shah (manager)","Stock":"Restock in 2 to 3 weeks"},tl:["Request submitted via the AI assistant","Manager approval requested|Non-standard item"]},
-    {n:"ACC5000412",t:"Access to finance reporting workspace",type:"Access",s:"Approval pending",c:"p-wait",u:"3 hr ago",kv:{Resource:"Finance reporting workspace",Level:"Read",Approvers:"Line manager, Resource owner","Reason":"Quarter-end client reporting"},tl:["Access requested|Not granted until both approvals complete","Sent to line manager"]},
-    {n:"HR3000052",t:"Employment verification letter",type:"HR",s:"Fulfilled",c:"p-done",u:"Yesterday",kv:{Letter:"Employment verification",Delivery:"Company email","Team":"HR Shared Services"},tl:["Request submitted","Letter issued and emailed"]},
-    {n:"FAC4000031",t:"Meeting room 4B display not working",type:"Facilities",s:"Assigned",c:"p-prog",u:"2 days ago",kv:{Location:"HQ, meeting room 4B",Team:"Workplace Services","Response target":"Same working day"},tl:["Reported via the AI assistant","Assigned to Workplace Services"]},
-    {n:"LR6000007",t:"Laptop refresh, courier swap",type:"Request",s:"Scheduled",c:"p-new",u:"3 days ago",kv:{Slot:"Courier, afternoon","Pre-swap checks":"Backup verified, key escrowed","Device":"Laptop, 4 years old"},tl:["Slot booked outside your travel dates","Backup verified"]}
-  ];
+  var cases=[];
   var rows=document.getElementById("rows");
   function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
   function render(flash){
     rows.innerHTML="";
+    if(!cases.length){rows.innerHTML="<tr><td colspan='5' style='color:#617080;padding:18px'>Your items appear here after the AI assistant verifies your identity.</td></tr>";return}
     cases.forEach(function(k,i){
       var tr=document.createElement("tr");if(flash===i)tr.className="flash";
       tr.innerHTML="<td><b>"+esc(k.n)+"</b></td><td>"+esc(k.t)+"</td><td>"+esc(k.type)+"</td><td><span class='pill "+k.c+"'>"+esc(k.s)+"</span></td><td>"+esc(k.u)+"</td>";
@@ -170,7 +164,7 @@
   document.getElementById("add").onclick=function(){
     var pre=document.getElementById("ct").value,num=document.getElementById("cn").value.trim()||(pre+(1000000+Math.floor(Math.random()*899999)));
     var d=document.getElementById("cd").value.trim()||"Created from the AI assistant",m=map[pre];
-    cases.unshift({n:num,t:d,type:m[0],s:m[2],c:m[1],u:"just now",kv:{Created:"Via AI assistant","Employee":"Alex Morgan",State:m[2]},tl:["Created by the AI assistant|Details and steps tried attached"]});
+    cases.unshift({n:num,t:d,type:m[0],s:m[2],c:m[1],u:"just now",kv:{Created:"Via AI assistant","Employee":"Employee",State:m[2]},tl:["Created by the AI assistant|Details and steps tried attached"]});
     render(0);document.getElementById("cn").value="";document.getElementById("cd").value="";
   };
   render();
