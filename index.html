@@ -73,7 +73,7 @@
   .tl small{display:block;color:var(--mute)}
   .btn{border:1px solid var(--acc);background:var(--acc);color:#fff;padding:8px 14px;border-radius:4px;font:inherit;cursor:pointer}
   #x{background:none;border:0;font-size:22px;cursor:pointer;margin-left:auto;color:var(--mute)}
-  #ctl{position:fixed;left:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:12px;width:260px}
+  #ctl{position:fixed;left:150px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:12px;width:260px}
   #ctl.min{width:auto}#ctl.min .cb{display:none}
   #ctl b{cursor:pointer;font-weight:600}
   #ctl select,#ctl input[type=text]{width:100%;margin:5px 0;padding:6px;border:1px solid var(--line);border-radius:4px;font:inherit}
@@ -209,6 +209,662 @@
   };
   render();
 })();
+</script>
+<script src="webchat.js"></script>
+<script>
+(function () {
+  'use strict';
+  if (window.__svdLoaded) return;   // page and userscript both contain this code: run once
+  window.__svdLoaded = true;
+
+  // Service desk Webchat v3 endpoint (Cognigy trial)
+  const CONFIG_URL = 'https://endpoint-trial.cognigy.ai/909dd4a40282bbc8d4665bee608433b7ab15e4c1fc215dbdcc92012dbd2e7ef3';
+  const USE_OWN_CHAT = true;
+  let webchat = null;
+
+  function startChat(tries) {
+    tries = tries || 0;
+    if (!USE_OWN_CHAT) return;
+    if (typeof window.initWebchat !== 'function') {
+      if (tries > 80) return console.warn('[Service desk demo] webchat.js did not load');
+      return setTimeout(function () { startChat(tries + 1); }, 250);
+    }
+    window.initWebchat(CONFIG_URL, { userId: 'demo-' + Date.now() })
+      .then(function (wc) { webchat = wc; window.__svdWebchat = wc; setTimeout(function () { try { wc.sendMessage('Hello'); } catch (e) {} }, 1500); })
+      .catch(function (e) { console.warn('[Service desk demo] chat init failed', e); });
+  }
+  startChat();
+
+  function sendToChat(text) {
+    const wc = webchat || window.__svdWebchat;
+    if (wc && typeof wc.sendMessage === 'function') {
+      try { wc.open(); } catch (e) {}
+      setTimeout(function () { wc.sendMessage(text); }, 350);
+      say('Sent to the chat.');
+      return true;
+    }
+    return false;
+  }
+
+  // Demo code = today's date in India time, DDMMYY (21 Oct 2026 = 211026). Matches the Cognigy flow.
+  function todayCode() {
+    const d = new Date(Date.now() + 330 * 60000);
+    const p2 = function (n) { return String(n).padStart(2, '0'); };
+    return p2(d.getUTCDate()) + p2(d.getUTCMonth() + 1) + p2(d.getUTCFullYear() % 100);
+  }
+
+  const PERSONAS = [
+    { id: 'EMP12045', name: 'Ananya Rao', role: 'Software Engineer, new joiner (Day 1), Pune', mobile: '+91 84540 69852', code: todayCode(), joiner: true,
+      scenarios: ['I joined today. What is pending for my setup?', 'Yes, please raise everything.', 'What is the status of my laptop?', 'When will I get access to GitHub?', 'Can I get production access today?', 'Please text me the delivery form link.'] },
+    { id: 'EMP10234', name: 'Alex Morgan', role: 'Consultant, Pune', mobile: '+91 90000 10001', code: todayCode(),
+      scenarios: ['I cannot sign in before my client call.', 'The VPN fails before my customer meeting.', 'Is payroll down, and when is the next update?', 'I need an approved monitor for my work from home setup.', 'I need access to the finance reporting workspace.', 'Can I plan my laptop refresh around my travel next month?'] },
+    { id: 'EMP10587', name: 'Priya Nair', role: 'HR Business Partner, Bengaluru', mobile: '+91 90000 10002', code: todayCode(),
+      scenarios: ['I need an employment letter.', 'The display in meeting room 4B is not working.', 'How do I connect to the approved remote network?'] },
+    { id: 'EMP10066', name: 'Meera Shah', role: 'Engineering Manager, Pune', mobile: '+91 90000 10003', code: todayCode(),
+      scenarios: ['I need to approve a pending access request.', 'Show me my team\'s pending requests.'] },
+    { id: 'EMP10890', name: 'Rahul Verma', role: 'Senior IT Engineer, Hyderabad', mobile: '+91 90000 10004', code: todayCode(),
+      scenarios: ['The VPN fails before my customer meeting.', 'I need Visio for the client onboarding project.', 'Can I plan my laptop refresh around my travel next month?'] },
+    { id: 'EMP10001', name: 'Sanjay Kapoor', role: 'Director of Engineering, Mumbai', mobile: '+91 90000 10005', code: todayCode(),
+      scenarios: ['I need a new laptop.', 'I need to approve a pending access request.', 'I need an approved monitor for my office.'] },
+    { id: 'EMP11002', name: 'Daniel Okoye', role: 'New joiner, London', mobile: '+44 7700 900123', code: todayCode(),
+      scenarios: ['Forgot my password.', 'I need an approved monitor for my work from home setup.'] }
+  ];
+
+  let current = PERSONAS[0];
+
+  const css = document.createElement('style');
+  css.textContent = [
+    '#svd{position:fixed;left:16px;bottom:16px;z-index:2147483000;font:13px system-ui,-apple-system,Segoe UI,sans-serif;color:#1b2433}',
+    '#svd .tab{background:#0b6b5f;color:#fff;border:0;border-radius:20px;padding:8px 14px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.25)}',
+    '#svd .panel{display:none;width:320px;background:#fff;border:1px solid #d8dee9;border-radius:12px;padding:12px;margin-bottom:8px;box-shadow:0 8px 28px rgba(0,0,0,.22)}',
+    '#svd.open .panel{display:block}',
+    '#svd select{width:100%;padding:7px;border:1px solid #d8dee9;border-radius:6px;font:inherit}',
+    '#svd .meta{margin:8px 0;padding:8px;background:#f2f5f7;border-radius:8px;line-height:1.5}',
+    '#svd .meta b{font-weight:600}',
+    '#svd button.s{display:block;width:100%;text-align:left;background:#f2f5f7;border:0;border-radius:6px;padding:7px 9px;margin:4px 0;cursor:pointer;color:#1b2433;font:inherit}',
+    '#svd button.s:hover{background:#dff2ee}',
+    '#svd button.p{width:100%;margin-top:6px;background:#1b2a3a;color:#fff;border:0;border-radius:8px;padding:9px;cursor:pointer;font:inherit}',
+    '#svd .hint{color:#617080;font-size:12px;margin:6px 0 0}',
+    '#sms{position:fixed;right:20px;top:20px;width:290px;z-index:2147483001;background:#10151c;color:#fff;border-radius:22px;padding:14px 14px 16px;box-shadow:0 14px 40px rgba(0,0,0,.45);font:13px system-ui,-apple-system,sans-serif;transform:translateY(-140%);transition:transform .35s}',
+    '#sms.show{transform:none}',
+    '#sms .h{display:flex;justify-content:space-between;opacity:.7;font-size:11px;margin-bottom:8px}',
+    '#sms .b{background:#1f2933;border-radius:14px;padding:10px 12px;line-height:1.45}',
+    '#sms .b b{display:block;margin-bottom:2px}',
+    '#sms .c{font-size:22px;letter-spacing:4px;font-weight:600;margin-top:4px}',
+    '#svtoast{position:fixed;left:50%;bottom:70px;transform:translateX(-50%);background:#1b2a3a;color:#fff;padding:9px 16px;border-radius:8px;z-index:2147483002;font:13px system-ui,sans-serif;opacity:0;transition:opacity .25s;pointer-events:none}',
+    '#svtoast.show{opacity:1}'
+  ].join('');
+  document.head.appendChild(css);
+
+  const root = document.createElement('div');
+  root.id = 'svd';
+  const panel = document.createElement('div');
+  panel.className = 'panel';
+  const tab = document.createElement('button');
+  tab.className = 'tab';
+  tab.textContent = 'Demo helper';
+  root.appendChild(panel);
+  root.appendChild(tab);
+  document.body.appendChild(root);
+
+  const sms = document.createElement('div');
+  sms.id = 'sms';
+  document.body.appendChild(sms);
+
+  const toast = document.createElement('div');
+  toast.id = 'svtoast';
+  document.body.appendChild(toast);
+
+  function say(msg) {
+    toast.textContent = msg;
+    toast.classList.add('show');
+    setTimeout(function () { toast.classList.remove('show'); }, 2200);
+  }
+
+  function copy(text) {
+    const done = function () { say('Copied. Paste it into the chat.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { fallback(text); });
+    } else { fallback(text); }
+  }
+  function fallback(text) {
+    const t = document.createElement('textarea');
+    t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); say('Copied. Paste it into the chat.'); } catch (e) { say(text); }
+    t.remove();
+  }
+
+  function showSms() {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    sms.innerHTML = '<div class="h"><span>Messages</span><span>' + time + '</span></div>' +
+      '<div class="b"><b>ACME-IT</b>Your verification code is<div class="c">' + todayCode() + '</div>' +
+      '<div style="opacity:.7;margin-top:4px">Valid for 5 minutes. Never share this code.</div></div>' +
+      '<div style="text-align:center;opacity:.5;font-size:11px;margin-top:8px">To ' + current.mobile + '</div>';
+    sms.classList.add('show');
+    setTimeout(function () { sms.classList.remove('show'); }, 12000);
+  }
+  sms.addEventListener('click', function (e) { if (!(e.target.closest && e.target.closest('a'))) sms.classList.remove('show'); });
+  function showXappSms(url, title) {
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    sms.innerHTML = '<div class="h"><span>Messages</span><span>' + time + '</span></div>' +
+      '<div class="b"><b>ACME-IT</b>Open ' + esc2(title) + ' on this phone:<div style="margin-top:6px"><a href="' + esc2(url) + '" target="_blank" rel="noopener" style="color:#7cc4ff;word-break:break-all">' + esc2(url.slice(0, 48)) + '...</a></div>' +
+      '<div style="opacity:.7;margin-top:6px;font-size:12px">The same link also opens inside the chat window.</div></div>' +
+      '<div style="text-align:center;opacity:.5;font-size:11px;margin-top:8px">To ' + current.mobile + '</div>';
+    sms.classList.add('show');
+    setTimeout(function () { sms.classList.remove('show'); }, 20000);
+  }
+
+  function render() {
+    panel.innerHTML = '';
+    const sel = document.createElement('select');
+    PERSONAS.forEach(function (p, i) {
+      const o = document.createElement('option');
+      o.value = i; o.textContent = p.name + ' (' + p.id + ')';
+      if (p === current) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.onchange = function () { current = PERSONAS[sel.value]; render(); };
+    panel.appendChild(sel);
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    meta.innerHTML = '<b>' + current.role + '</b><br>Registered mobile: <b>' + current.mobile + '</b>';
+    panel.appendChild(meta);
+
+    const lab = document.createElement('div');
+    lab.className = 'hint'; lab.textContent = 'Scenarios (click to send to the chat)';
+    panel.appendChild(lab);
+    current.scenarios.forEach(function (t) {
+      const b = document.createElement('button');
+      b.className = 's'; b.textContent = t;
+      b.onclick = function () { if (!sendToChat(t)) copy(t); };
+      panel.appendChild(b);
+    });
+
+    const cm = document.createElement('button');
+    cm.className = 's'; cm.textContent = 'Copy this persona\'s mobile number';
+    cm.onclick = function () { copy(current.mobile); };
+    panel.appendChild(cm);
+
+    const ph = document.createElement('button');
+    ph.className = 'p'; ph.textContent = 'Show SMS on phone (after the agent says it sent a code)';
+    ph.onclick = showSms;
+    panel.appendChild(ph);
+
+    const mv = document.createElement('button');
+    mv.className = 's'; mv.textContent = 'Manual: open the personalised view for this persona';
+    mv.onclick = function () { active = current; applyPersonaView(current); renderProfile(); say('Personalised view opened.'); };
+    panel.appendChild(mv);
+
+    if (current.joiner) {
+      const ad = document.createElement('button');
+      ad.className = 's'; ad.textContent = 'Screen only: advance onboarding one step';
+      ad.onclick = function () { if (!active || !active.joiner) { say('Verify first.'); return; } obStage = Math.min(3, obStage + 1); obRender(false); };
+      panel.appendChild(ad);
+    }
+    const st = document.createElement('p');
+    st.className = 'hint stat'; st.textContent = 'Chat link: checking';
+    panel.appendChild(st);
+
+    const h = document.createElement('p');
+    h.className = 'hint'; h.textContent = 'Fictional demo data. Alt+D hides this panel.';
+    panel.appendChild(h);
+  }
+  render();
+
+  tab.onclick = function () { root.classList.toggle('open'); };
+  document.addEventListener('keydown', function (e) {
+    if (e.altKey && (e.key === 'd' || e.key === 'D')) {
+      root.style.display = root.style.display === 'none' ? '' : 'none';
+    }
+  });
+
+  // ===== Portal bridge: the chat drives the backend screen =====
+  // When the agent verifies an employee, their profile and eligible items open on the page.
+  // As the conversation moves (requested, awaiting approval, approved, shipped), the items and the
+  // "My open items" table update. Fictional demo data.
+  const STD = function (o) { return o; };
+  const ENT = {
+    EMP10234: { mgr: 'Meera Shah', items: [
+      { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
+      { k: 'qhd', n: '27 inch QHD monitor (non-standard)', s: 'Needs approval' },
+      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
+      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
+      { k: 'headset', n: 'Headset', s: 'Eligible' },
+      { k: 'laptop', n: 'Windows laptop, Dell Latitude (device is 4 years old)', s: 'Eligible' },
+      { k: 'visio', n: 'Visio (software)', s: 'Needs approval' }] },
+    EMP10587: { mgr: 'Anil Rao', items: [
+      { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
+      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
+      { k: 'headset', n: 'Headset', s: 'Eligible' },
+      { k: 'laptop', n: 'Laptop refresh', s: 'Not yet due' }] },
+    EMP10066: { mgr: 'Rohan Iyer', items: [
+      { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
+      { k: 'qhd', n: '27 inch QHD monitor', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
+      { k: 'headset', n: 'Headset', s: 'Eligible' },
+      { k: 'approvals', n: 'Approval queue: 3 requests from your team', s: 'Action needed' }] },
+    EMP10890: { mgr: 'Kavita Das', items: [
+      { k: 'monitor', n: 'Dual 27 inch monitors (power user)', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
+      { k: 'visio', n: 'Visio (software)', s: 'Eligible' },
+      { k: 'laptop', n: 'Laptop refresh', s: 'Eligible' }] },
+    EMP10001: { mgr: 'Elena Petrova', items: [
+      { k: 'laptop', n: 'MacBook Pro 14 inch (director level and above)', s: 'Eligible' },
+      { k: 'monitor', n: '27 inch QHD monitor', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
+      { k: 'headset', n: 'Headset', s: 'Eligible' },
+      { k: 'approvals', n: 'Approval queue: 2 requests from your team', s: 'Action needed' }] },
+    EMP12045: { mgr: 'Vikram Desai', items: [
+      { k: 'monitor', n: '24 inch monitor (starter kit)', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock (starter kit)', s: 'Eligible' }] },
+    EMP11002: { mgr: 'Sarah Whitfield', items: [
+      { k: 'monitor', n: '24 inch monitor (starter kit)', s: 'Eligible' },
+      { k: 'dock', n: 'USB-C dock (starter kit)', s: 'Eligible' },
+      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
+      { k: 'headset', n: 'Headset (starter kit)', s: 'Eligible' },
+      { k: 'laptop', n: 'Laptop refresh', s: 'Not eligible (new joiner)' }] }
+  };
+  const KEYS = [['qhd', /27\s*inch|qhd/i], ['monitor', /monitor/i], ['dock', /dock/i], ['keyboard', /keyboard|mouse/i],
+    ['headset', /headset/i], ['laptop', /laptop|macbook/i], ['visio', /visio/i]];
+  const store = {};            // persona id -> items (copy, mutated as the chat progresses)
+  Object.keys(ENT).forEach(function (id) { store[id] = ENT[id].items.map(function (x) { return Object.assign({}, x); }); });
+  let active = null;           // verified persona
+  let candidate = null;        // persona whose mobile the user typed
+  let lastIssue = '';
+  let seenText = '';
+
+  const bcss = document.createElement('style');
+  bcss.textContent = [
+    '#svprof{position:fixed;left:16px;top:92px;width:340px;max-height:calc(100vh - 220px);overflow:auto;z-index:2147482000;background:#fff;color:#1b2433;border:1px solid #d8dee9;border-radius:12px;box-shadow:0 12px 36px rgba(0,0,0,.25);font:13px system-ui,-apple-system,Segoe UI,sans-serif;transform:translateX(-120%);transition:transform .4s}',
+    '#svprof.show{transform:none}',
+    '#svprof .ph{display:flex;gap:10px;align-items:center;padding:14px;background:#0b6b5f;color:#fff;border-radius:12px 12px 0 0}',
+    '#svprof .av{width:40px;height:40px;border-radius:50%;background:#fff;color:#0b6b5f;display:flex;align-items:center;justify-content:center;font-weight:700}',
+    '#svprof .ph b{display:block;font-size:15px}',
+    '#svprof .x{margin-left:auto;background:none;border:0;color:#fff;font-size:20px;cursor:pointer}',
+    '#svprof .v{padding:8px 14px;background:#e6f6ef;color:#14683f;font-weight:600}',
+    '#svprof .kv{padding:10px 14px;display:grid;grid-template-columns:90px 1fr;gap:4px 8px;color:#425466}',
+    '#svprof h4{margin:6px 14px;font-size:12px;text-transform:uppercase;letter-spacing:.04em;color:#617080}',
+    '#svprof .it{cursor:pointer;display:flex;justify-content:space-between;gap:8px;padding:8px 14px;border-top:1px solid #eef1f5;align-items:center}',
+    '#svprof .it.flash{animation:svf 1.8s}',
+    '@keyframes svf{0%{background:#fff3b0}100%{background:transparent}}',
+    '#svprof .c{white-space:nowrap;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;background:#e8eef5;color:#334}',
+    '#svprof .c.g{background:#dff2e6;color:#14683f}#svprof .c.y{background:#fff0d1;color:#8a5a00}#svprof .c.b{background:#dbe9ff;color:#1b4fa0}#svprof .c.r{background:#fde0e0;color:#a12828}'
+  ].join('');
+  document.head.appendChild(bcss);
+
+  const prof = document.createElement('aside');
+  prof.id = 'svprof';
+  document.body.appendChild(prof);
+
+  function chip(s) {
+    const c = /approved|shipped|delivered|eligible$|scheduled/i.test(s) && !/not/i.test(s) ? 'g'
+      : /await|needs|action/i.test(s) ? 'y' : /requested/i.test(s) ? 'b' : /out of stock|not/i.test(s) ? 'r' : '';
+    return '<span class="c ' + c + '">' + s + '</span>';
+  }
+  function esc2(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function renderProfile(flashKey) {
+    if (!active) return;
+    if (active.joiner) { prof.classList.remove('show'); return; }
+    const p = active, e = ENT[p.id];
+    const init = p.name.split(' ').map(function (w) { return w[0]; }).join('');
+    const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    prof.innerHTML = '<div class="ph"><div class="av">' + init + '</div><div><b>' + esc2(p.name) + '</b>' + esc2(p.role) + '</div><button class="x" aria-label="Close">&times;</button></div>' +
+      '<div class="v">Identity verified by SMS code at ' + time + '</div>' +
+      '<div class="kv"><span>Employee ID</span><span>' + p.id + '</span><span>Mobile</span><span>' + esc2(p.mobile) + '</span><span>Manager</span><span>' + esc2(e.mgr) + '</span></div>' +
+      '<h4>Eligible items and status</h4>' +
+      store[p.id].map(function (it) { return '<div class="it' + (flashKey === it.k ? ' flash' : '') + '"><span>' + esc2(it.n) + '</span>' + chip(it.s) + '</div>'; }).join('');
+    prof.querySelector('.x').onclick = function () { prof.classList.remove('show'); };
+    prof.classList.add('show');
+  }
+
+  function greet(p) {
+    const h = Array.prototype.find.call(document.querySelectorAll('h1,h2'), function (n) { return /how can we help/i.test(n.textContent); });
+    if (h) h.textContent = p.joiner ? 'Welcome, ' + p.name.split(' ')[0] : 'How can we help, ' + p.name.split(' ')[0] + '?';
+  }
+
+  function stateFrom(t) {
+    if (/out of stock|restock|not in stock/i.test(t)) return 'Out of stock';
+    if (/(has been|was|is now|have been|now|is) approved|approved(,| and)|in fulfilment|approved by|approval (granted|complete)/i.test(t)) return 'Approved';
+    if (/(awaiting|pending|needs|requires|sent for|sent to).{0,40}approval|approval (has been )?(requested|pending)/i.test(t)) return 'Awaiting approval';
+    if (/shipped|dispatched|in transit/i.test(t)) return 'Shipped';
+    if (/\b(has been|was|is|were) delivered\b|delivered (on|yesterday|today)\b/i.test(t)) return 'Delivered';
+    if (/scheduled|booked/i.test(t)) return 'Scheduled';
+    if (/submitted|created|placed|ordered|raised|logged/i.test(t)) return 'Requested';
+    return null;
+  }
+
+  function setItem(personId, key, state) {
+    const list = store[personId]; if (!list) return;
+    const it = list.find(function (x) { return x.k === key; });
+    if (it) it.s = state;
+  }
+
+  // ---- "My open items" table ----
+  const PFX = { INC: ['Incident', 'p-new', 'New'], REQ: ['Request', 'p-new', 'Submitted'], ACC: ['Access', 'p-wait', 'Approval pending'],
+    HR: ['HR', 'p-new', 'Submitted'], FAC: ['Facilities', 'p-prog', 'Assigned'], LR: ['Request', 'p-new', 'Scheduled'], CHG: ['Request', 'p-new', 'Submitted'], RITM: ['Request', 'p-new', 'Submitted'] };
+  function pillClass(s) {
+    return /fulfil|deliver|approved|resolved/i.test(s) ? 'p-done' : /await|pending|stock/i.test(s) ? 'p-wait' : /progress|assigned|shipped/i.test(s) ? 'p-prog' : /scheduled|new|submitted|requested/i.test(s) ? 'p-new' : 'p-prog';
+  }
+  function openDrawer(n, t, s, c, kv, tl) {
+    const q = function (id) { return document.getElementById(id); };
+    if (!q('drawer')) return;
+    q('d-num').textContent = n; q('d-title').textContent = t;
+    q('d-state').textContent = s; q('d-state').className = 'pill ' + c;
+    q('d-kv').innerHTML = Object.keys(kv).map(function (a) { return '<span>' + esc2(a) + '</span><span>' + esc2(kv[a]) + '</span>'; }).join('');
+    q('d-tl').innerHTML = tl.map(function (x) { const p = x.split('|'); return '<div>' + esc2(p[0]) + (p[1] ? '<small>' + esc2(p[1]) + '</small>' : '') + '</div>'; }).join('');
+    q('drawer').classList.add('open'); q('drawer').setAttribute('aria-hidden', 'false');
+  }
+  function upsertCase(num, desc, state, detail) {
+    const tb = document.getElementById('rows'); if (!tb) return;
+    const pre = (num.match(/^[A-Z]+/) || ['REQ'])[0];
+    const m = PFX[pre] || PFX.REQ;
+    state = state || m[2];
+    const c = pillClass(state);
+    let tr = Array.prototype.find.call(tb.querySelectorAll('tr'), function (r) { return r.cells[0] && r.cells[0].textContent.trim() === num; });
+    const person = active ? active.name : 'Alex Morgan';
+    const kv = Object.assign({ Created: 'Via AI assistant', Employee: person, State: state }, detail || {});
+    const tl = ['Updated by the AI assistant|' + state];
+    if (!tr) {
+      tr = document.createElement('tr');
+      tb.insertBefore(tr, tb.firstChild);
+    }
+    tr.className = 'flash';
+    tr.innerHTML = '<td><b>' + esc2(num) + '</b></td><td>' + esc2(desc) + '</td><td>' + m[0] + '</td><td><span class="pill ' + c + '">' + esc2(state) + '</span></td><td>just now</td>';
+    tr.onclick = function () { openDrawer(num, desc, state, c, kv, tl); };
+    openDrawer(num, desc, state, c, kv, tl);
+  }
+
+
+  // ---- Generic portal until verified; personalised view after ----
+  const CASES = {
+    EMP10234: [
+      ['INC1004217', 'VPN disconnects every few minutes', 'Incident', 'In progress', '12 min ago', { Priority: 'P3', Service: 'VPN', 'Assigned group': 'Network Services' }],
+      ['REQ2000118', '27 inch QHD monitor', 'Request', 'Awaiting approval', '1 hr ago', { Item: '27 inch QHD monitor', 'Deliver to': 'Home office, Pune', Approver: 'Meera Shah (manager)', Stock: 'Restock in 2 to 3 weeks' }],
+      ['ACC5000412', 'Access to finance reporting workspace', 'Access', 'Approval pending', '3 hr ago', { Resource: 'Finance reporting workspace', Level: 'Read', Approvers: 'Line manager, Resource owner' }],
+      ['HR3000052', 'Employment verification letter', 'HR', 'Fulfilled', 'Yesterday', { Letter: 'Employment verification', Delivery: 'Company email' }],
+      ['FAC4000031', 'Meeting room 4B display not working', 'Facilities', 'Assigned', '2 days ago', { Location: 'HQ, meeting room 4B', Team: 'Workplace Services' }],
+      ['LR6000007', 'Laptop refresh, courier swap', 'Request', 'Scheduled', '3 days ago', { Slot: 'Courier, afternoon', 'Pre-swap checks': 'Backup verified, key escrowed' }]],
+    EMP10587: [
+      ['HR3000061', 'Employment letter for a mortgage', 'HR', 'Fulfilled', 'Last week', { Delivery: 'Company email' }],
+      ['FAC4000044', 'Desk booking kiosk offline, floor 3', 'Facilities', 'Assigned', '1 day ago', { Team: 'Workplace Services' }]],
+    EMP10066: [
+      ['ACC5000412', 'Approval: Alex Morgan, finance reporting workspace', 'Access', 'Approval pending', '3 hr ago', { Requester: 'Alex Morgan', Level: 'Read' }],
+      ['REQ2000118', 'Approval: Alex Morgan, 27 inch QHD monitor', 'Request', 'Awaiting approval', '1 hr ago', { Requester: 'Alex Morgan', Reason: 'Non-standard item' }],
+      ['REQ2000140', 'Approval: team laptop refresh', 'Request', 'Awaiting approval', '5 hr ago', { Requester: 'Pune team', Devices: '4' }]],
+    EMP10890: [
+      ['INC1004190', 'Build server VPN gateway timeout', 'Incident', 'In progress', '40 min ago', { Priority: 'P2', Service: 'VPN' }],
+      ['LR6000011', 'Laptop refresh, travel dates pending', 'Request', 'Scheduled', '2 days ago', { Slot: 'To be confirmed' }]],
+    EMP10001: [
+      ['ACC5000430', 'Approval: team access to build dashboard', 'Access', 'Approval pending', '2 hr ago', { Requester: 'Platform team', Level: 'Read' }]],
+    EMP12045: [],
+    EMP11002: []
+  };
+  const CASE_FLOW = { p: pillClass };
+  function fillRows(p) {
+    const tb = document.getElementById('rows'); if (!tb) return;
+    tb.innerHTML = '';
+    const list = CASES[p.id] || [];
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="5" style="color:#617080;padding:18px">No open items yet, ' + esc2(p.name.split(' ')[0]) + '.</td></tr>'; return; }
+    list.forEach(function (r, i) {
+      const tr = document.createElement('tr'); if (i === 0) tr.className = 'flash';
+      const c = pillClass(r[3]);
+      tr.innerHTML = '<td><b>' + r[0] + '</b></td><td>' + esc2(r[1]) + '</td><td>' + r[2] + '</td><td><span class="pill ' + c + '">' + esc2(r[3]) + '</span></td><td>' + r[4] + '</td>';
+      tr.onclick = function () { openDrawer(r[0], r[1], r[3], c, Object.assign({ Employee: p.name }, r[5]), ['Opened from the portal|' + r[3]]); };
+      tb.appendChild(tr);
+    });
+  }
+  function setHeader(name, init) {
+    const me = document.querySelector('.me');
+    if (me) { const sp = me.querySelector('span'), av = me.querySelector('.av'); if (sp) sp.textContent = name; if (av) av.textContent = init; }
+  }
+  function genericView() {
+    const h = Array.prototype.find.call(document.querySelectorAll('h1,h2'), function (n) { return /how can we help/i.test(n.textContent); });
+    if (h) h.textContent = 'How can we help?';
+    setHeader('Guest (not signed in)', '?');
+    const tb = document.getElementById('rows');
+    if (tb) tb.innerHTML = '<tr><td colspan="5" style="color:#617080;padding:18px">Your items appear here after the assistant verifies your identity.</td></tr>';
+    const dr = document.getElementById('drawer'); if (dr) dr.classList.remove('open');
+    const o = document.getElementById('onb'), op = document.getElementById('open');
+    if (o) o.classList.remove('show'); if (op) op.style.display = '';
+    const sub = document.getElementById('sub'); if (sub) sub.textContent = 'Sign in through the assistant to see your requests, approvals and onboarding tasks.';
+  }
+  function applyPersonaView(p) {
+    greet(p);
+    setHeader(p.name, p.name.split(' ').map(function (w) { return w[0]; }).join(''));
+    fillRows(p);
+    if (p.joiner) { obReset(); obShow(true); obRender(true); } else { obShow(false); const sub = document.getElementById('sub'); if (sub) sub.textContent = 'Signed in as ' + p.name + '. Select an item to see its status.'; }
+  }
+  genericView();
+
+
+  // ===== New joiner: Day 1 readiness (Confirm, Plan, Fulfil, Verify) =====
+  // Mirrors the flow's get_onboarding_status tool so the screen and the agent agree.
+  const dd = function (n) { return new Date(Date.now() + n * 86400000).toISOString().slice(0, 10); };
+  const OB = [
+    { k: 'laptop', t: 'RITM0010421', n: 'Laptop: Dell Latitude 5440, Windows 11', o: 'End User Computing',
+      s: ['Not requested', 'Awaiting delivery address', 'Dispatched', 'Out for delivery'],
+      d: ['Not requested yet.', 'Approved at offer stage. The courier needs your home address and a contact number.', 'Dispatched with BlueDart, AWB 74129086331. Expected ' + dd(2) + '.', 'Out for delivery. Expected 11:00 to 14:00 on ' + dd(1) + '. Someone must sign.'] },
+    { k: 'peripherals', t: 'RITM0010422', n: 'Mouse, keyboard and headset', o: 'End User Computing',
+      s: ['Not requested', 'Approved', 'Packed with laptop', 'Packed with laptop'],
+      d: ['Not requested yet.', 'In stock at the Pune store. Ships in the laptop box.', 'Packed with the laptop, same AWB.', 'Packed with the laptop, same AWB.'] },
+    { k: 'mailbox', t: 'INC0045872', n: 'Work mailbox not provisioned', o: 'IAM Operations',
+      s: ['Pending', 'In progress', 'In progress', 'Resolved'],
+      d: ['Account exists but there is no mailbox. The HR joining confirmation has not synced to identity yet.', 'Logged with IAM Operations, manual sync requested. Target 2 hours.', 'Licence assigned. Mailbox provisioning, up to 30 minutes.', 'Mailbox is ready. Sign in to Outlook with your work address.'] },
+    { k: 'mfa', t: '', n: 'Multi-factor sign-in (Authenticator app)', o: 'You',
+      s: ['Action needed', 'Action needed', 'Action needed', 'Action needed'],
+      d: ['Install Microsoft Authenticator and register it at first sign-in. Temporary password expires in 72 hours.', 'Install Microsoft Authenticator and register it at first sign-in.', 'Still to do on your side: register Microsoft Authenticator.', 'Still to do on your side: register Microsoft Authenticator.'] },
+    { k: 'vpn', t: '', n: 'VPN access', o: 'Network Services',
+      s: ['Not requested', 'Waiting on laptop', 'Waiting on laptop', 'Ready after laptop setup'],
+      d: ['VPN is only issued to a managed device.', 'Switches on when the laptop enrols in Intune at first sign-in.', 'Waiting for the laptop to arrive and enrol.', 'Activates automatically when the laptop enrols.'] },
+    { k: 'github', t: 'RITM0010423', n: 'GitHub Enterprise and repo, PRJ-48213', o: 'Engineering Platform',
+      s: ['Not requested', 'Awaiting approval', 'Awaiting approval', 'Approved'],
+      d: ['Not requested yet.', 'Waiting for your manager, Vikram Desai.', 'Manager approved. Waiting for the project owner, Neha Kulkarni.', 'Approved. Access is added within the hour.'] },
+    { k: 'jira', t: 'RITM0010424', n: 'Jira and Confluence, PRJ-48213', o: 'Engineering Platform',
+      s: ['Not requested', 'Awaiting approval', 'Approved', 'Approved'],
+      d: ['Not requested yet.', 'Waiting for your manager, Vikram Desai.', 'Approved by your manager.', 'Approved and provisioned.'] },
+    { k: 'badge', t: 'FAC0004418', n: 'Office access badge, Pune', o: 'Workplace Services',
+      s: ['Not requested', 'Action needed', 'In progress', 'Ready for collection'],
+      d: ['Not requested yet.', 'Needs a passport size photo before the badge can be printed.', 'Photo received. Badge is being printed.', 'Ready at Reception, Floor 1. Carry a government photo ID.'] },
+    { k: 'training', t: '', n: 'Course: Information security awareness', o: 'You',
+      s: ['Due in 7 days', 'Due in 7 days', 'Due in 7 days', 'Due in 7 days'],
+      d: ['35 minutes in the learning portal. Needed before production access.', '35 minutes in the learning portal. Needed before production access.', '35 minutes in the learning portal. Needed before production access.', '35 minutes in the learning portal. Needed before production access.'] }
+  ];
+  let obStage = 0, obPrev = {}, obPhoto = false;
+  function obPill(s) {
+    return /action needed/i.test(s) ? 'p-act' : /await|pending|waiting|due in/i.test(s) ? 'p-wait'
+      : /approved|resolved|ready for|packed|dispatched|out for delivery/i.test(s) ? 'p-done' : /progress/i.test(s) ? 'p-prog' : 'p-new';
+  }
+  function obRender(flashAll) {
+    const tb = document.getElementById('onbrows'); if (!tb) return;
+    tb.innerHTML = '';
+    let ready = 0;
+    OB.forEach(function (it) {
+      let st = it.s[obStage], dt = it.d[obStage];
+      if (it.k === 'badge' && obStage >= 1) {
+        if (!obPhoto) { st = 'Action needed'; dt = 'Needs a passport size photo before the badge can be printed. Use the photo screen.'; }
+        else if (obStage < 3) { st = 'In progress'; dt = 'Photo received. The badge is being printed.'; }
+      }
+      if (/^(approved|resolved|ready for|packed|dispatched|out for delivery)/i.test(st)) ready++;
+      const tr = document.createElement('tr');
+      if (flashAll || (obPrev[it.k] && obPrev[it.k] !== st)) tr.className = 'flash';
+      obPrev[it.k] = st;
+      tr.innerHTML = '<td><b>' + (obStage >= 1 && it.t ? it.t : (it.t ? '' : '')) + '</b>' + ((obStage < 1 && it.t) ? '<span class="sub">Not raised</span>' : '') + '</td>' +
+        '<td>' + esc2(it.n) + '<span class="sub">' + esc2(dt) + '</span></td><td>' + esc2(it.o) + '</td>' +
+        '<td><span class="pill ' + obPill(st) + '">' + esc2(st) + '</span></td>';
+      tr.onclick = function () {
+        const num = it.t && obStage >= 1 ? it.t : '';
+        openDrawer(num || it.n, it.n, st, obPill(st), { Owner: it.o, Ticket: num || 'No ticket needed', Employee: 'Ananya Rao', 'Project code': 'PRJ-48213' }, [dt + '|' + st]);
+        if (num) sendData('Status of ' + num, { svdAction: 'svd_case_open', caseNumber: num, caseTitle: it.n, caseState: st });
+        else sendData('What do I need to do for ' + it.n + '?');
+      };
+      tb.appendChild(tr);
+    });
+    const phase = !active ? -1 : obStage === 0 ? 1 : obStage < 3 ? 2 : 3;
+    Array.prototype.forEach.call(document.querySelectorAll('#phases .ph'), function (el, i) {
+      el.className = 'ph' + (i < phase ? ' done' : i === phase ? ' cur' : '');
+    });
+    const bar = document.getElementById('onb-bar'); if (bar) bar.style.width = Math.round(ready / OB.length * 100) + '%';
+    const n = document.getElementById('onb-n'); if (n) n.textContent = ready + ' of ' + OB.length + ' ready for day one';
+    const nt = document.getElementById('onb-note');
+    if (nt) nt.textContent = obStage === 0 ? 'Nothing has been requested yet. Ask the assistant to plan your setup.'
+      : 'Access stays pending until your manager and the project owner approve. Items waiting on you are marked Action needed.';
+  }
+  function obShow(on) {
+    const o = document.getElementById('onb'), op = document.getElementById('open');
+    if (o) o.classList.toggle('show', !!on);
+    if (op) op.style.display = on ? 'none' : '';
+    const t = document.getElementById('onb-t'); if (t && active) t.textContent = 'Your first day, ' + active.name.split(' ')[0];
+    const sb = document.getElementById('onb-s'); if (sb) sb.textContent = 'Manager: Vikram Desai   |   Start date: ' + dd(0);
+    const sub = document.getElementById('sub'); if (sub && active) sub.textContent = on ? 'Welcome to Acme. Here is where your setup stands.' : 'Signed in as ' + active.name + '.';
+  }
+  function obFromText(text) {
+    let st = obStage;
+    if (/(photo|picture).{0,40}(received|uploaded|submitted)|uploaded your (badge )?photo|got your photo|received your photo/i.test(text)) obPhoto = true;
+    if (/RITM0010421|RITM0010422|RITM0010423|RITM0010424|INC0045872|FAC0004418|RITM\s?00104|\braised\b|all (the )?requests/i.test(text) && st < 1) st = 1;
+    if (st >= 1 && /dispatched|AWB|manager (has )?approved|approved by your manager|licence (is )?assigned/i.test(text)) st = Math.max(st, 2);
+    if (st >= 1 && /out for delivery|mailbox is ready|resolved|ready (for collection|at reception)|provisioned|project owner (has )?approved/i.test(text)) st = 3;
+    if (st !== obStage) { obStage = st; }
+    obRender(false);
+  }
+  function obReset() { obStage = 0; obPrev = {}; obPhoto = false; }
+
+  function handleOutgoing(text) {
+    const digits = text.replace(/\D/g, '');
+    if (digits.length >= 10) {
+      const hit = PERSONAS.concat([{ id: 'EMP12045', mobile: '+91 90000 10006' }]).find(function (p) { return digits.slice(-10) === p.mobile.replace(/\D/g, '').slice(-10); });
+      if (hit) candidate = PERSONAS.find(function (p) { return p.id === hit.id; });
+    } else if (text.trim().split(/\s+/).length >= 3) { lastIssue = text.trim(); }
+  }
+
+  function handleBot(text) {
+    if (!text || text === seenText) return;
+    seenText = text;
+    // 1. verification -> open the profile
+    if (/(verified|identity (is )?confirmed|(thank(s| you)|welcome|hi|hello),?\s+(ananya|alex|priya|meera|rahul|sanjay|daniel))/i.test(text) && !/not (been )?verified|could not|locked|unable/i.test(text)) {
+      const byName = PERSONAS.find(function (p) { return text.indexOf(p.name.split(' ')[0]) >= 0; });
+      const who = candidate || byName;
+      if (who && (!active || active.id !== who.id)) { active = who; applyPersonaView(who); renderProfile(); }
+    }
+    if (!active) return;
+    if (active.joiner) { obFromText(text); renderProfile(); return; }
+    // 2. item states
+    const st = stateFrom(text);
+    let flash = null;
+    if (st) {
+      KEYS.forEach(function (kk) {
+        if (kk[1].test(text) && store[active.id].some(function (x) { return x.k === kk[0]; })) { setItem(active.id, kk[0], st); flash = kk[0]; }
+      });
+      // a manager approving clears the employee's waiting items
+      if (active.id === 'EMP10066' && st === 'Approved') {
+        Object.keys(store).forEach(function (id) { store[id].forEach(function (x) { if (x.s === 'Awaiting approval' || x.s === 'Needs approval') x.s = 'Approved'; }); });
+        setItem('EMP10066', 'approvals', 'Approved');
+        Object.keys(CASES).forEach(function (id) { CASES[id].forEach(function (r) { if (/approval/i.test(r[3])) r[3] = 'Approved'; }); });
+        const rows = document.getElementById('rows');
+        if (rows) Array.prototype.forEach.call(rows.querySelectorAll('tr'), function (r) {
+          if (/approval/i.test(r.cells[3].textContent)) { r.cells[3].innerHTML = '<span class="pill p-done">Approved</span>'; r.className = 'flash'; }
+        });
+      }
+    }
+    renderProfile(flash);
+    // 3. case numbers or shipped items -> table and drill-down
+    const nums = (text.match(/\b(?:INC|RITM|REQ|ACC|HR|FAC|LR|CHG)\s?\d{5,}\b/g) || []).map(function (n) { return n.replace(/\s/g, ''); });
+    if (nums.length) {
+      nums.forEach(function (n) {
+        const itm = flash && store[active.id].find(function (x) { return x.k === flash; });
+        const desc = itm ? itm.n.replace(/\s*\(.*$/, '') : lastIssue ? lastIssue.replace(/^(i (need|want)|can i|please)\s+/i, '').replace(/[.?!]+$/, '') : 'Created from the AI assistant';
+        upsertCase(n, desc.charAt(0).toUpperCase() + desc.slice(1, 70), st && st !== 'Requested' ? st : null);
+      });
+    } else {
+      const ship = text.match(/your (.{3,50}?) (has|have) been (shipped|delivered|dispatched)/i);
+      if (ship) {
+        upsertCase('REQ2000131', ship[1].charAt(0).toUpperCase() + ship[1].slice(1), 'Shipped', { Carrier: 'Demo Express', 'Expected delivery': (text.match(/\d{4}-\d{2}-\d{2}/) || ['soon'])[0] });
+      }
+    }
+    if (/MI-?2041|major incident/i.test(text) && /payroll/i.test(text)) {
+      const mi = document.getElementById('mi');
+      if (mi && !mi.checked) { mi.checked = true; mi.onchange && mi.onchange(); }
+    }
+  }
+
+  const frag = {};
+  let hookWorks = false;
+  function hookChat(tries) {
+    tries = tries || 0;
+    const wc = webchat || window.__svdWebchat;
+    if (!wc || typeof wc.registerAnalyticsService !== 'function') {
+      if (tries > 120) return console.warn('[Service desk demo] analytics hook not available');
+      return setTimeout(function () { hookChat(tries + 1); }, 500);
+    }
+    wc.registerAnalyticsService(function (ev) {
+      hookWorks = true;
+      try {
+        const p = ev && ev.payload;
+        // xApp link from the flow: show it on the demo phone so it can be opened on a real phone too
+        const app = p && p.data && p.data._cognigy && p.data._cognigy._app;
+        if (app && app.url && ev.type === 'webchat/incoming-message') showXappSms(app.url, (app.overlaySettings && app.overlaySettings.screenTitle) || 'your form');
+        if (!p || typeof p.text !== 'string') return;
+        if (ev.type === 'webchat/outgoing-message') handleOutgoing(p.text);
+        else if (ev.type === 'webchat/incoming-message') {
+          const mid = p.data && p.data._cognigy && p.data._cognigy._messageId;
+          if (!p.text) return;
+          if (mid) { frag[mid] = (frag[mid] || '') + p.text; handleBot(frag[mid]); } else { handleBot(p.text); }
+        }
+      } catch (e) { console.warn('[Service desk demo] bridge error', e); }
+    });
+  }
+  hookChat();
+
+  // Portal clicks go to the agent with structured data (handled by the flow's Afterwards > Portal action branch)
+  function sendData(text, data) {
+    const wc = webchat || window.__svdWebchat;
+    if (!wc) return false;
+    try { wc.open(); } catch (e) {}
+    setTimeout(function () { wc.sendMessage(text, data); }, 300);
+    return true;
+  }
+  document.addEventListener('click', function (e) {
+    const tr = e.target.closest && e.target.closest('#rows tr');
+    if (tr && tr.cells && tr.cells.length >= 4 && /^[A-Z]{2,4}\d{5,}$/.test(tr.cells[0].textContent.trim())) {
+      const num = tr.cells[0].textContent.trim();
+      sendData('Status of ' + num, { svdAction: 'svd_case_open', caseNumber: num, caseTitle: tr.cells[1].textContent.trim(), caseState: tr.cells[3].textContent.trim() });
+      return;
+    }
+    const it = e.target.closest && e.target.closest('#svprof .it');
+    if (it && /Eligible|Needs approval/.test(it.textContent) && !/Not eligible/.test(it.textContent)) {
+      const name = it.firstChild.textContent.trim();
+      sendData('I would like to request ' + name, { svdAction: 'svd_item_request', itemName: name });
+    }
+  }, true);
+  // Fallback: if the chat API hook is not available (for example another extension owns the chat),
+  // read the chat text from the page instead.
+  const seenLines = {};
+  let domTimer = null;
+  function scanDom() {
+    if (hookWorks) return;
+    const rootEl = document.querySelector('.webchat-root');
+    if (!rootEl) return;
+    (rootEl.innerText || '').split('\n').map(function (l) { return l.trim(); }).forEach(function (l) {
+      if (l.length < 6 || seenLines[l]) return;
+      seenLines[l] = 1;
+      if (/^\+?[\d\s]{10,16}$/.test(l)) handleOutgoing(l); else handleBot(l);
+    });
+  }
+  new MutationObserver(function () { clearTimeout(domTimer); domTimer = setTimeout(scanDom, 500); })
+    .observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  function updateStat() {
+    const el = panel.querySelector('.stat');
+    if (!el) return;
+    el.textContent = hookWorks ? 'Chat link: connected' : (document.querySelector('.webchat-root') ? 'Chat link: reading the page (fallback)' : 'Chat link: no chat found yet');
+  }
+  setInterval(updateStat, 1000);
+
+  window.__svdBridge = { handleBot: handleBot, handleOutgoing: handleOutgoing, setActive: function (id) { active = PERSONAS.find(function (p) { return p.id === id; }); renderProfile(); } };
+})();
+
 </script>
 </body>
 </html>
