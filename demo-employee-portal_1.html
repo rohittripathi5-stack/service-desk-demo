@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Employee Center | Acme</title>
+<style>
+  :root{--nav:#1c2b39;--nav2:#263a4d;--ink:#1f2933;--mute:#5f6c7b;--line:#d9dfe5;--bg:#f3f5f7;--card:#fff;--acc:#1a6fb5;--acc2:#145a94;--ok:#1d7a46;--warn:#a85d00;--bad:#b3261e}
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.45 "Segoe UI",system-ui,-apple-system,Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  a{color:var(--acc);text-decoration:none}
+  .top{background:var(--nav);color:#fff;display:flex;align-items:center;height:52px;padding:0 20px;gap:22px}
+  .brand{display:flex;align-items:center;gap:9px;font-weight:600;font-size:15px}
+  .mark{width:24px;height:24px;border-radius:5px;background:#e8eef4;color:var(--nav);display:grid;place-items:center;font-weight:800;font-size:13px}
+  .top nav{display:flex;gap:2px}
+  .top nav a{color:#c5d0db;padding:15px 12px;font-size:13.5px;border-bottom:3px solid transparent}
+  .top nav a.on{color:#fff;border-color:#69b1ee}
+  .me{margin-left:auto;display:flex;align-items:center;gap:10px;font-size:13px;color:#dbe4ec}
+  .av{width:30px;height:30px;border-radius:50%;background:#3d5870;color:#fff;display:grid;place-items:center;font-weight:600;font-size:12px}
+  #banner{display:none;background:#fdf1dc;border-bottom:1px solid #ecc98a;color:#5c3b00;padding:9px 20px;font-size:13px}
+  #banner.show{display:block}
+  .strip{background:#fff;border-bottom:1px solid var(--line)}
+  .strip .in{max-width:1200px;margin:0 auto;padding:22px 24px;display:flex;align-items:center;gap:24px;flex-wrap:wrap}
+  .strip h1{margin:0;font-size:22px;font-weight:600}
+  .strip p{margin:3px 0 0;color:var(--mute);font-size:13px}
+  .search{margin-left:auto;display:flex;width:380px;max-width:100%}
+  .search input{flex:1;border:1px solid #b9c3cd;border-right:0;border-radius:4px 0 0 4px;padding:9px 12px;font:inherit;outline:none}
+  .search button{border:1px solid var(--acc);background:var(--acc);color:#fff;border-radius:0 4px 4px 0;padding:0 16px;font:inherit;cursor:pointer}
+  main{max-width:1200px;margin:20px auto 60px;padding:0 24px}
+  .links{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap}
+  .links a{background:#fff;border:1px solid var(--line);border-radius:4px;padding:8px 14px;font-size:13px;color:var(--ink)}
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:4px;margin-bottom:18px}
+  .card>h2{margin:0;padding:12px 16px;font-size:14.5px;font-weight:600;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center}
+  .card>h2 small{font-weight:400;color:var(--mute);font-size:12px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{text-align:left;font-weight:600;color:var(--mute);padding:9px 16px;border-bottom:1px solid var(--line);background:#fafbfc;font-size:12px}
+  td{padding:10px 16px;border-bottom:1px solid #eceff2;vertical-align:top}
+  tbody tr{cursor:pointer}tbody tr:hover{background:#f6f9fc}
+  tr.flash{animation:fl 2.4s ease-out}
+  @keyframes fl{0%{background:#fff3b8}100%{background:transparent}}
+  .pill{display:inline-block;padding:1px 8px;border-radius:3px;font-size:12px;font-weight:600;white-space:nowrap}
+  .p-prog{background:#e3effa;color:#12508a}.p-wait{background:#fdf0d8;color:var(--warn)}.p-done{background:#e0f2e8;color:var(--ok)}.p-new{background:#ececf4;color:#4a4a7a}.p-act{background:#fbe4e2;color:var(--bad)}
+  .sub{display:block;color:var(--mute);font-size:12px;margin-top:2px}
+  /* onboarding */
+  #onb{display:none}#onb.show{display:block}
+  .phases{display:flex;padding:16px 16px 6px;gap:0}
+  .ph{flex:1;position:relative;padding-top:22px;font-size:12px;color:var(--mute)}
+  .ph:before{content:"";position:absolute;top:6px;left:0;right:0;height:3px;background:#dfe5ea}
+  .ph:after{content:"";position:absolute;top:0;left:0;width:15px;height:15px;border-radius:50%;background:#fff;border:3px solid #c7d0d8}
+  .ph b{display:block;color:var(--ink);font-size:13px}
+  .ph.done:before{background:var(--ok)}.ph.done:after{background:var(--ok);border-color:var(--ok)}
+  .ph.cur:before{background:linear-gradient(90deg,var(--acc) 50%,#dfe5ea 50%)}.ph.cur:after{border-color:var(--acc)}
+  .ph.cur b{color:var(--acc)}
+  .meter{padding:6px 16px 14px;display:flex;align-items:center;gap:12px;color:var(--mute);font-size:12.5px}
+  .bar{flex:1;height:6px;background:#e6ebef;border-radius:3px;overflow:hidden}.bar i{display:block;height:100%;background:var(--ok);width:0;transition:width .5s}
+  .note{padding:10px 16px;background:#f7f9fb;border-top:1px solid var(--line);font-size:12.5px;color:var(--mute)}
+  .side ul{list-style:none;margin:0;padding:4px 16px 10px}
+  .side li{padding:9px 0;border-bottom:1px solid #eceff2;font-size:13px;display:flex;justify-content:space-between;gap:8px}
+  .side li:last-child{border:0}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#2e9d5d;margin-right:7px}
+  .dot.bad{background:var(--bad)}
+  .kb li{display:block}
+  .kb small{display:block;color:var(--mute)}
+  #drawer{position:fixed;top:0;right:-470px;width:450px;max-width:100%;height:100%;background:#fff;border-left:1px solid var(--line);box-shadow:-8px 0 24px rgba(0,0,0,.14);transition:right .25s;z-index:50;display:flex;flex-direction:column}
+  #drawer.open{right:0}
+  #drawer header{display:flex;align-items:center;padding:0 18px;height:54px;border-bottom:1px solid var(--line);font-size:15px}
+  #drawer .body{padding:18px;overflow:auto;flex:1}
+  #drawer h4{margin:18px 0 8px;font-size:11.5px;color:var(--mute);text-transform:uppercase;letter-spacing:.06em}
+  .kv{display:grid;grid-template-columns:130px 1fr;gap:6px 10px;font-size:13px}.kv span:nth-child(odd){color:var(--mute)}
+  .tl{border-left:2px solid var(--line);margin-left:5px;padding-left:14px}
+  .tl div{margin-bottom:12px;font-size:13px;position:relative}.tl div:before{content:"";position:absolute;left:-20px;top:5px;width:10px;height:10px;border-radius:50%;background:var(--acc)}
+  .tl small{display:block;color:var(--mute)}
+  .btn{border:1px solid var(--acc);background:var(--acc);color:#fff;padding:8px 14px;border-radius:4px;font:inherit;cursor:pointer}
+  #x{background:none;border:0;font-size:22px;cursor:pointer;margin-left:auto;color:var(--mute)}
+  #ctl{position:fixed;left:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:12px;width:260px}
+  #ctl.min{width:auto}#ctl.min .cb{display:none}
+  #ctl b{cursor:pointer;font-weight:600}
+  #ctl select,#ctl input[type=text]{width:100%;margin:5px 0;padding:6px;border:1px solid var(--line);border-radius:4px;font:inherit}
+  #ctl label{display:flex;gap:6px;align-items:center;margin-top:6px}
+  @media(max-width:960px){.cols{grid-template-columns:1fr}.search{margin-left:0;width:100%}.top nav{display:none}}
+</style>
+</head>
+<body>
+<div class="top">
+  <div class="brand"><div class="mark">A</div>Acme Employee Center</div>
+  <nav><a class="on" href="#">Home</a><a href="#">Get help</a><a href="#">Catalog</a><a href="#">Knowledge</a><a href="#">My requests</a></nav>
+  <div class="me"><span>Guest (not signed in)</span><div class="av">?</div></div>
+</div>
+<div id="banner"><b>Major incident MI-2041.</b> Some employees cannot open the payroll portal. Payments are not affected. Next update by 10:30 UTC.</div>
+
+<div class="strip"><div class="in">
+  <div><h1>How can we help?</h1><p id="sub">Sign in through the assistant to see your requests, approvals and onboarding tasks.</p></div>
+  <div class="search"><input placeholder="Search knowledge, catalog and requests"><button>Search</button></div>
+</div></div>
+
+<main>
+  <div class="links"><a href="#">Report an issue</a><a href="#">Request equipment</a><a href="#">Request access</a><a href="#">HR help</a><a href="#">Workplace services</a></div>
+  <div class="cols">
+    <div>
+      <section class="card" id="onb">
+        <h2><span id="onb-t">Your first day</span><small id="onb-s"></small></h2>
+        <div class="phases" id="phases">
+          <div class="ph" data-p="0"><b>Confirm</b>HR start, role, identity</div>
+          <div class="ph" data-p="1"><b>Plan</b>Location and needs</div>
+          <div class="ph" data-p="2"><b>Fulfil</b>IT, HR, Workplace</div>
+          <div class="ph" data-p="3"><b>Verify</b>Usable day one setup</div>
+        </div>
+        <div class="meter"><div class="bar"><i id="onb-bar"></i></div><span id="onb-n"></span></div>
+        <table><thead><tr><th>Number</th><th>Item</th><th>Owner</th><th>State</th></tr></thead><tbody id="onbrows"></tbody></table>
+        <div class="note" id="onb-note"></div>
+      </section>
+      <section class="card" id="open">
+        <h2>My open items <small>Select a row for details</small></h2>
+        <table><thead><tr><th>Number</th><th>Short description</th><th>Type</th><th>State</th><th>Updated</th></tr></thead><tbody id="rows"></tbody></table>
+      </section>
+    </div>
+    <div>
+      <section class="card side">
+        <h2>Service status</h2>
+        <ul id="status">
+          <li><span><span class="dot"></span>VPN</span><small>Operational</small></li>
+          <li><span><span class="dot"></span>Email and calendar</span><small>Operational</small></li>
+          <li id="st-pay"><span><span class="dot"></span>Payroll portal</span><small>Operational</small></li>
+          <li><span><span class="dot"></span>Microsoft Teams</span><small>Operational</small></li>
+        </ul>
+      </section>
+      <section class="card side kb">
+        <h2>Popular articles</h2>
+        <ul>
+          <li><a href="#">Set up Microsoft Authenticator</a><small>Sign-in and security</small></li>
+          <li><a href="#">Connect to the corporate VPN</a><small>Remote access</small></li>
+          <li><a href="#">Request a laptop refresh</a><small>Hardware</small></li>
+          <li><a href="#">Get software from the catalog</a><small>Software</small></li>
+        </ul>
+      </section>
+    </div>
+  </div>
+</main>
+
+<aside id="drawer" aria-hidden="true">
+  <header><b id="d-num"></b><button id="x" aria-label="Close">&times;</button></header>
+  <div class="body">
+    <h3 id="d-title" style="margin:0 0 8px;font-size:16px"></h3><span id="d-state" class="pill"></span>
+    <h4>Details</h4><div class="kv" id="d-kv"></div>
+    <h4>Activity</h4><div class="tl" id="d-tl"></div>
+    <div style="margin-top:18px"><button class="btn" id="ask">Copy question for the assistant</button></div>
+    <p id="ask-note" style="font-size:12px;color:var(--mute)"></p>
+  </div>
+</aside>
+
+<div id="ctl" class="min">
+  <b id="ctl-t">Presenter</b>
+  <div class="cb">
+    <label><input type="checkbox" id="mi"> Show payroll major incident</label>
+    <select id="ct"><option>INC</option><option>REQ</option><option>RITM</option><option>ACC</option><option>HR</option><option>FAC</option><option>LR</option></select>
+    <input type="text" id="cn" placeholder="Number from the chat">
+    <input type="text" id="cd" placeholder="Short description">
+    <button class="btn" id="add" style="width:100%">Add item to list</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var cases=[];
+  var rows=document.getElementById("rows");
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+  function render(flash){
+    rows.innerHTML="";
+    if(!cases.length){rows.innerHTML="<tr><td colspan='5' style='color:#5f6c7b;padding:16px'>Your items appear here after the assistant verifies your identity.</td></tr>";return}
+    cases.forEach(function(k,i){
+      var tr=document.createElement("tr");if(flash===i)tr.className="flash";
+      tr.innerHTML="<td><b>"+esc(k.n)+"</b></td><td>"+esc(k.t)+"</td><td>"+esc(k.type)+"</td><td><span class='pill "+k.c+"'>"+esc(k.s)+"</span></td><td>"+esc(k.u)+"</td>";
+      tr.onclick=function(){open(k)};rows.appendChild(tr);
+    });
+  }
+  var dr=document.getElementById("drawer"),cur=null;
+  function open(k){
+    cur=k;
+    document.getElementById("d-num").textContent=k.n;
+    document.getElementById("d-title").textContent=k.t;
+    var st=document.getElementById("d-state");st.textContent=k.s;st.className="pill "+k.c;
+    var kv=document.getElementById("d-kv");kv.innerHTML="";
+    Object.keys(k.kv).forEach(function(a){kv.innerHTML+="<span>"+esc(a)+"</span><span>"+esc(k.kv[a])+"</span>"});
+    var tl=document.getElementById("d-tl");tl.innerHTML="";
+    k.tl.forEach(function(x){var p=x.split("|");tl.innerHTML+="<div>"+esc(p[0])+(p[1]?"<small>"+esc(p[1])+"</small>":"")+"</div>"});
+    document.getElementById("ask-note").textContent="";
+    dr.classList.add("open");dr.setAttribute("aria-hidden","false");
+  }
+  document.getElementById("x").onclick=function(){dr.classList.remove("open")};
+  document.getElementById("ask").onclick=function(){
+    if(!cur)return;
+    var q="What is the status of "+cur.n+" ("+cur.t+")?";
+    var note=document.getElementById("ask-note");
+    (navigator.clipboard?navigator.clipboard.writeText(q):Promise.reject()).then(function(){note.textContent="Copied. Paste it into the chat window."},function(){note.textContent="Ask the chat: "+q});
+  };
+  var mi=document.getElementById("mi");
+  mi.onchange=function(){
+    document.getElementById("banner").classList.toggle("show",mi.checked);
+    document.getElementById("st-pay").innerHTML=mi.checked?"<span><span class='dot bad'></span>Payroll portal</span><small style='color:#b3261e'>Major incident MI-2041</small>":"<span><span class='dot'></span>Payroll portal</span><small>Operational</small>";
+  };
+  document.getElementById("ctl-t").onclick=function(){document.getElementById("ctl").classList.toggle("min")};
+  var map={INC:["Incident","p-new","New"],REQ:["Request","p-new","Submitted"],RITM:["Request","p-new","Submitted"],ACC:["Access","p-wait","Approval pending"],HR:["HR","p-new","Submitted"],FAC:["Facilities","p-prog","Assigned"],LR:["Request","p-new","Scheduled"]};
+  document.getElementById("add").onclick=function(){
+    var pre=document.getElementById("ct").value,num=document.getElementById("cn").value.trim()||(pre+(1000000+Math.floor(Math.random()*899999)));
+    var d=document.getElementById("cd").value.trim()||"Created from the assistant",m=map[pre];
+    cases.unshift({n:num,t:d,type:m[0],s:m[2],c:m[1],u:"just now",kv:{Created:"Via assistant",State:m[2]},tl:["Created by the assistant|Details and steps tried attached"]});
+    render(0);document.getElementById("cn").value="";document.getElementById("cd").value="";
+  };
+  render();
+})();
+</script>
+</body>
+</html>
