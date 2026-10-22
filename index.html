@@ -73,7 +73,7 @@
   .tl small{display:block;color:var(--mute)}
   .btn{border:1px solid var(--acc);background:var(--acc);color:#fff;padding:8px 14px;border-radius:4px;font:inherit;cursor:pointer}
   #x{background:none;border:0;font-size:22px;cursor:pointer;margin-left:auto;color:var(--mute)}
-  #ctl{position:fixed;left:150px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:12px;width:260px}
+  #ctl{position:fixed;left:16px;bottom:16px;z-index:40;background:#fff;border:1px solid var(--line);border-radius:6px;padding:8px 10px;box-shadow:0 4px 16px rgba(0,0,0,.15);font-size:12px;width:260px}
   #ctl.min{width:auto}#ctl.min .cb{display:none}
   #ctl b{cursor:pointer;font-weight:600}
   #ctl select,#ctl input[type=text]{width:100%;margin:5px 0;padding:6px;border:1px solid var(--line);border-radius:4px;font:inherit}
@@ -210,33 +210,129 @@
   render();
 })();
 </script>
-<script src="webchat.js"></script>
+<script charset="utf-8" src="webchat.js"></script>
 <script>
+/* Service desk demo v2.0.0: roles, screens and chat link (same code as the Tampermonkey script, so the page works on its own). */
+
+/*
+  HOW TO USE
+  1. In Tampermonkey: Dashboard > + (new script) > select all > paste this file > File > Save.
+  2. To run on another site, add a line such as  // @match  https://your-site.example.com/*  above.
+     (Do not match every site: the chat would load on every page you open.)
+  3. Open the page. The Cognigy chat bubble appears bottom right, and a "Demo helper" button bottom left.
+  4. Pick a persona, click a scenario (it is sent to the chat), and when the agent says it sent a code
+     click "Show SMS on phone" to display it. Alt+D hides the helper.
+
+  If you also have the NiCEview extension active on the same page, set USE_OWN_CHAT to false
+  so the chat is not loaded twice. Pin the webchat.js version in @require before a customer demo.
+  All data is fictional demo data.
+*/
+
+/* v1.6.1: shows a banner so you can see that the script is running. Green = loaded, red = it crashed (with the reason). */
 (function () {
+  try { console.log('[Service desk demo] v2.0.0 starting on', location.href); } catch (e) {}
+  function banner(msg, bad) {
+    if (window.top !== window.self) return;
+    try {
+      var d = document.createElement('div');
+      d.textContent = msg;
+      d.style.cssText = 'position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:2147483647;padding:8px 14px;border-radius:6px;font:13px system-ui,sans-serif;color:#fff;background:' + (bad ? '#b3261e' : '#1d7a46') + ';box-shadow:0 4px 14px rgba(0,0,0,.3);max-width:80vw';
+      (document.body || document.documentElement).appendChild(d);
+      setTimeout(function () { d.remove(); }, bad ? 15000 : 3500);
+    } catch (e) {}
+  }
+  window.__svdBanner = banner;
+  // v2.0: tap EVERY Cognigy webchat on the page (ours or the NiCEview extension's) the moment it is created,
+  // so the portal receives the agent's status events no matter who started the chat.
+  (function () {
+    function tap(wc) {
+      try {
+        if (!wc || wc.__svdTapped || typeof wc.registerAnalyticsService !== 'function') return;
+        wc.__svdTapped = true; window.__svdChatSeen = true;
+        wc.registerAnalyticsService(function (ev) { try { window.dispatchEvent(new CustomEvent('svd-chat-event', { detail: ev })); } catch (e) {} });
+      } catch (e) {}
+    }
+    function wrap(fn) {
+      if (typeof fn !== 'function' || fn.__svdWrapped) return fn;
+      const w = function () { const p = fn.apply(this, arguments); try { Promise.resolve(p).then(tap); } catch (e) {} return p; };
+      w.__svdWrapped = true; return w;
+    }
+    let cur = wrap(window.initWebchat);
+    try {
+      Object.defineProperty(window, 'initWebchat', { configurable: true, get: function () { return cur; }, set: function (v) { cur = wrap(v); } });
+    } catch (e) {}
+  })();
+  window.addEventListener('error', function (ev) {
+    if (ev && ev.message && /svd|Service desk|obRender|handleBot|PERSONAS|webchat/i.test(ev.message + (ev.filename || ''))) banner('Service desk demo error: ' + ev.message, true);
+  });
+  // If the chat library did not come from @require, load it from the demo site
+  setTimeout(function () {
+    if (typeof window.initWebchat === 'function') return;
+    var sc = document.createElement('script');
+    sc.src = location.origin + location.pathname.replace(/[^/]*$/, '') + 'webchat.js';
+    sc.onerror = function () { banner('Chat library did not load. Check the @require line or upload webchat.js next to index.html.', true); };
+    document.head.appendChild(sc);
+  }, 4000);
+})();
+try {
+window.__svdMainFn = function () {
   'use strict';
-  if (window.__svdLoaded) return;   // page and userscript both contain this code: run once
+  if (window.__svdLoaded) return;   // the portal page already contains this code
   window.__svdLoaded = true;
+
+  // The portal can be shown inside a frame (for example inside the NiCEview shell). The chat lives in the top
+  // window; the portal frame gets the chat messages by postMessage and sends portal clicks back the same way.
+  const IN_FRAME = window.top !== window.self;
+  const PORTAL_LOCAL = !!document.getElementById('rows');
+  const IS_PORTAL_FRAME = IN_FRAME && PORTAL_LOCAL;
+  if (IN_FRAME && !PORTAL_LOCAL) return;     // some other frame on the page: do nothing
+  function fwd(msg) {
+    Array.prototype.forEach.call(document.querySelectorAll('iframe'), function (f) { try { f.contentWindow.postMessage(msg, '*'); } catch (e) {} });
+  }
 
   // Service desk Webchat v3 endpoint (Cognigy trial)
   const CONFIG_URL = 'https://endpoint-trial.cognigy.ai/909dd4a40282bbc8d4665bee608433b7ab15e4c1fc215dbdcc92012dbd2e7ef3';
   const USE_OWN_CHAT = true;
   let webchat = null;
 
+  let extChat = false;   // true when another chat (for example the NiCEview extension) already shows a chat window
   function startChat(tries) {
     tries = tries || 0;
-    if (!USE_OWN_CHAT) return;
+    if (!USE_OWN_CHAT || IS_PORTAL_FRAME) return;
+    if (tries === 0) {
+      return setTimeout(function () {
+        if (window.__svdChatSeen || document.querySelector('.webchat-root') || window.cognigyWebchat || document.querySelector('script[src^="chrome-extension://"]') || document.querySelector('[id*="cognigy" i], [class*="cognigy" i]')) { extChat = true; console.log('[Service desk demo] another chat is already on this page, using it'); return; }
+        startChat(1);
+      }, 6000);
+    }
     if (typeof window.initWebchat !== 'function') {
       if (tries > 80) return console.warn('[Service desk demo] webchat.js did not load');
       return setTimeout(function () { startChat(tries + 1); }, 250);
     }
     window.initWebchat(CONFIG_URL, { userId: 'demo-' + Date.now() })
-      .then(function (wc) { webchat = wc; window.__svdWebchat = wc; setTimeout(function () { try { wc.sendMessage('Hello'); } catch (e) {} }, 1500); })
+      .then(function (wc) { webchat = wc; window.__svdWebchat = wc; let chk = 0; const iv = setInterval(function () { chk++; if (extChat || chk > 12) { clearInterval(iv); return; } if (document.querySelectorAll('.webchat-root').length > 1) { extChat = true; clearInterval(iv); try { wc.close(); } catch (e) {} console.log('[Service desk demo] two chats found, following the visible one'); } }, 3000); setTimeout(function () { try { wc.sendMessage('Hello'); } catch (e) {} }, 1500); })
       .catch(function (e) { console.warn('[Service desk demo] chat init failed', e); });
   }
   startChat();
 
+  function domSend(text) {
+    try {
+      const roots = Array.prototype.slice.call(document.querySelectorAll('.webchat-root'));
+      let root = null, inp = null;
+      roots.forEach(function (r) { const i = r.querySelector('textarea, input[type=text], [contenteditable=true]'); if (i && i.offsetParent !== null && !inp) { root = r; inp = i; } });
+      if (!root || !inp) return false;
+      if (inp.isContentEditable) { inp.focus(); inp.textContent = text; inp.dispatchEvent(new Event('input', { bubbles: true })); }
+      else { const proto = inp.tagName === 'TEXTAREA' ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype; Object.getOwnPropertyDescriptor(proto, 'value').set.call(inp, text); inp.dispatchEvent(new Event('input', { bubbles: true })); }
+      setTimeout(function () {
+        const btn = root.querySelector('button[aria-label*="end" i], button[data-testid*="send" i]') || Array.prototype.find.call(root.querySelectorAll('button'), function (b) { return /send/i.test(b.getAttribute('aria-label') || b.title || ''); });
+        if (btn) btn.click(); else inp.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', code: 'Enter', keyCode: 13, bubbles: true }));
+      }, 150);
+      return true;
+    } catch (e) { return false; }
+  }
   function sendToChat(text) {
     const wc = webchat || window.__svdWebchat;
+    if ((!wc || extChat) && domSend(text)) { say('Sent to the chat.'); return true; }
     if (wc && typeof wc.sendMessage === 'function') {
       try { wc.open(); } catch (e) {}
       setTimeout(function () { wc.sendMessage(text); }, 350);
@@ -254,20 +350,12 @@
   }
 
   const PERSONAS = [
-    { id: 'EMP12045', name: 'Ananya Rao', role: 'Software Engineer, new joiner (Day 1), Pune', mobile: '+91 84540 69852', code: todayCode(), joiner: true,
-      scenarios: ['I joined today. What is pending for my setup?', 'Yes, please raise everything.', 'What is the status of my laptop?', 'When will I get access to GitHub?', 'Can I get production access today?', 'Please text me the delivery form link.'] },
-    { id: 'EMP10234', name: 'Alex Morgan', role: 'Consultant, Pune', mobile: '+91 90000 10001', code: todayCode(),
-      scenarios: ['I cannot sign in before my client call.', 'The VPN fails before my customer meeting.', 'Is payroll down, and when is the next update?', 'I need an approved monitor for my work from home setup.', 'I need access to the finance reporting workspace.', 'Can I plan my laptop refresh around my travel next month?'] },
-    { id: 'EMP10587', name: 'Priya Nair', role: 'HR Business Partner, Bengaluru', mobile: '+91 90000 10002', code: todayCode(),
-      scenarios: ['I need an employment letter.', 'The display in meeting room 4B is not working.', 'How do I connect to the approved remote network?'] },
-    { id: 'EMP10066', name: 'Meera Shah', role: 'Engineering Manager, Pune', mobile: '+91 90000 10003', code: todayCode(),
-      scenarios: ['I need to approve a pending access request.', 'Show me my team\'s pending requests.'] },
-    { id: 'EMP10890', name: 'Rahul Verma', role: 'Senior IT Engineer, Hyderabad', mobile: '+91 90000 10004', code: todayCode(),
-      scenarios: ['The VPN fails before my customer meeting.', 'I need Visio for the client onboarding project.', 'Can I plan my laptop refresh around my travel next month?'] },
-    { id: 'EMP10001', name: 'Sanjay Kapoor', role: 'Director of Engineering, Mumbai', mobile: '+91 90000 10005', code: todayCode(),
-      scenarios: ['I need a new laptop.', 'I need to approve a pending access request.', 'I need an approved monitor for my office.'] },
-    { id: 'EMP11002', name: 'Daniel Okoye', role: 'New joiner, London', mobile: '+44 7700 900123', code: todayCode(),
-      scenarios: ['Forgot my password.', 'I need an approved monitor for my work from home setup.'] }
+    { id: 'EMP12045', name: 'Rohit Tripathi', role: 'Software Engineer, new joiner (Day 1), Pune', roleKey: 'joiner', tag: 'New joiner', mobile: '+91 84540 69852', code: todayCode(), joiner: true,
+      scenarios: ['I joined today. What is pending for my setup?', 'Yes, please raise everything.', 'What is the status of my laptop?', 'When will I get access to GitHub?', 'Please text me the badge photo link.'] },
+    { id: 'EMP10234', name: 'Shailesh Utekar', role: 'Senior Consultant, Pune (existing employee)', roleKey: 'employee', tag: 'Employee', mobile: '+91 98199 72486', code: todayCode(),
+      scenarios: ['My VPN keeps dropping. Can you run a diagnostic?', 'I need a 27 inch QHD monitor for my home office.', 'I need access to the finance reporting workspace, read access, for quarter-end reporting.', 'I need a new laptop.', 'What is the status of my access request?'] },
+    { id: 'EMP10066', name: 'Subodh', role: 'Engineering Manager, Pune (approver)', roleKey: 'manager', tag: 'Manager', mobile: '+91 90000 10066', code: todayCode(),
+      scenarios: ['What approvals are waiting for me?', 'Approve RITM0010423', 'Approve RITM0010424', 'Approve ACC5000501', 'Approve REQ2000502'] }
   ];
 
   let current = PERSONAS[0];
@@ -306,6 +394,7 @@
   root.appendChild(panel);
   root.appendChild(tab);
   document.body.appendChild(root);
+  if (IS_PORTAL_FRAME) root.style.display = 'none';
 
   const sms = document.createElement('div');
   sms.id = 'sms';
@@ -393,13 +482,13 @@
 
     const mv = document.createElement('button');
     mv.className = 's'; mv.textContent = 'Manual: open the personalised view for this persona';
-    mv.onclick = function () { active = current; applyPersonaView(current); renderProfile(); say('Personalised view opened.'); };
+    mv.onclick = function () { active = current; applyPersonaView(current); renderProfile(); fwd({ svd: 'manual', id: current.id }); say('Personalised view opened.'); };
     panel.appendChild(mv);
 
     if (current.joiner) {
       const ad = document.createElement('button');
       ad.className = 's'; ad.textContent = 'Screen only: advance onboarding one step';
-      ad.onclick = function () { if (!active || !active.joiner) { say('Verify first.'); return; } obStage = Math.min(3, obStage + 1); obRender(false); };
+      ad.onclick = function () { if (!active || !active.joiner) { say('Verify first.'); return; } obStage = Math.min(3, obStage + 1); obRender(false); fwd({ svd: 'adv' }); };
       panel.appendChild(ad);
     }
     const st = document.createElement('p');
@@ -425,46 +514,13 @@
   // "My open items" table update. Fictional demo data.
   const STD = function (o) { return o; };
   const ENT = {
-    EMP10234: { mgr: 'Meera Shah', items: [
+    EMP10234: { mgr: 'Subodh', items: [
       { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
-      { k: 'qhd', n: '27 inch QHD monitor (non-standard)', s: 'Needs approval' },
+      { k: 'qhd', n: '27 inch QHD monitor (needs approval)', s: 'Needs approval' },
       { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
-      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
-      { k: 'headset', n: 'Headset', s: 'Eligible' },
-      { k: 'laptop', n: 'Windows laptop, Dell Latitude (device is 4 years old)', s: 'Eligible' },
-      { k: 'visio', n: 'Visio (software)', s: 'Needs approval' }] },
-    EMP10587: { mgr: 'Anil Rao', items: [
-      { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
-      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
-      { k: 'headset', n: 'Headset', s: 'Eligible' },
-      { k: 'laptop', n: 'Laptop refresh', s: 'Not yet due' }] },
-    EMP10066: { mgr: 'Rohan Iyer', items: [
-      { k: 'monitor', n: '24 inch monitor (standard)', s: 'Eligible' },
-      { k: 'qhd', n: '27 inch QHD monitor', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
-      { k: 'headset', n: 'Headset', s: 'Eligible' },
-      { k: 'approvals', n: 'Approval queue: 3 requests from your team', s: 'Action needed' }] },
-    EMP10890: { mgr: 'Kavita Das', items: [
-      { k: 'monitor', n: 'Dual 27 inch monitors (power user)', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
-      { k: 'visio', n: 'Visio (software)', s: 'Eligible' },
-      { k: 'laptop', n: 'Laptop refresh', s: 'Eligible' }] },
-    EMP10001: { mgr: 'Elena Petrova', items: [
-      { k: 'laptop', n: 'MacBook Pro 14 inch (director level and above)', s: 'Eligible' },
-      { k: 'monitor', n: '27 inch QHD monitor', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock', s: 'Eligible' },
-      { k: 'headset', n: 'Headset', s: 'Eligible' },
-      { k: 'approvals', n: 'Approval queue: 2 requests from your team', s: 'Action needed' }] },
-    EMP12045: { mgr: 'Vikram Desai', items: [
-      { k: 'monitor', n: '24 inch monitor (starter kit)', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock (starter kit)', s: 'Eligible' }] },
-    EMP11002: { mgr: 'Sarah Whitfield', items: [
-      { k: 'monitor', n: '24 inch monitor (starter kit)', s: 'Eligible' },
-      { k: 'dock', n: 'USB-C dock (starter kit)', s: 'Eligible' },
-      { k: 'keyboard', n: 'Wireless keyboard and mouse', s: 'Eligible' },
-      { k: 'headset', n: 'Headset (starter kit)', s: 'Eligible' },
-      { k: 'laptop', n: 'Laptop refresh', s: 'Not eligible (new joiner)' }] }
+      { k: 'laptop', n: 'Windows laptop refresh (device is 4 years old)', s: 'Eligible' }] },
+    EMP12045: { mgr: 'Subodh', items: [] },
+    EMP10066: { mgr: 'Rohan Iyer', items: [] }
   };
   const KEYS = [['qhd', /27\s*inch|qhd/i], ['monitor', /monitor/i], ['dock', /dock/i], ['keyboard', /keyboard|mouse/i],
     ['headset', /headset/i], ['laptop', /laptop|macbook/i], ['visio', /visio/i]];
@@ -506,7 +562,8 @@
   function esc2(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
 
   function renderProfile(flashKey) {
-    if (!active) return;
+    prof.classList.remove('show'); return;   // v2.0: role screens replace the side flyout
+    if (!active || (!PORTAL_LOCAL)) return;
     if (active.joiner) { prof.classList.remove('show'); return; }
     const p = active, e = ENT[p.id];
     const init = p.name.split(' ').map(function (w) { return w[0]; }).join('');
@@ -521,8 +578,9 @@
   }
 
   function greet(p) {
-    const h = Array.prototype.find.call(document.querySelectorAll('h1,h2'), function (n) { return /how can we help/i.test(n.textContent); });
-    if (h) h.textContent = p.joiner ? 'Welcome, ' + p.name.split(' ')[0] : 'How can we help, ' + p.name.split(' ')[0] + '?';
+    if (!PORTAL_LOCAL) return;
+    const h = document.querySelector('.strip h1') || document.querySelector('h1');
+    if (h) h.textContent = p.joiner ? 'Welcome, ' + p.name.split(' ')[0] : p.roleKey === 'manager' ? 'Welcome back, ' + p.name.split(' ')[0] : 'How can we help, ' + p.name.split(' ')[0] + '?';
   }
 
   function stateFrom(t) {
@@ -544,7 +602,7 @@
 
   // ---- "My open items" table ----
   const PFX = { INC: ['Incident', 'p-new', 'New'], REQ: ['Request', 'p-new', 'Submitted'], ACC: ['Access', 'p-wait', 'Approval pending'],
-    HR: ['HR', 'p-new', 'Submitted'], FAC: ['Facilities', 'p-prog', 'Assigned'], LR: ['Request', 'p-new', 'Scheduled'], CHG: ['Request', 'p-new', 'Submitted'], RITM: ['Request', 'p-new', 'Submitted'] };
+    HR: ['HR', 'p-new', 'Submitted'], FAC: ['Facilities', 'p-prog', 'Assigned'], LR: ['Request', 'p-new', 'Scheduled'], CHG: ['Request', 'p-new', 'Submitted'], RITM: ['Request', 'p-new', 'Submitted'], SWR: ['Request', 'p-wait', 'Approval pending'] };
   function pillClass(s) {
     return /fulfil|deliver|approved|resolved/i.test(s) ? 'p-done' : /await|pending|stock/i.test(s) ? 'p-wait' : /progress|assigned|shipped/i.test(s) ? 'p-prog' : /scheduled|new|submitted|requested/i.test(s) ? 'p-new' : 'p-prog';
   }
@@ -564,7 +622,7 @@
     state = state || m[2];
     const c = pillClass(state);
     let tr = Array.prototype.find.call(tb.querySelectorAll('tr'), function (r) { return r.cells[0] && r.cells[0].textContent.trim() === num; });
-    const person = active ? active.name : 'Alex Morgan';
+    const person = active ? active.name : 'Shailesh Utekar';
     const kv = Object.assign({ Created: 'Via AI assistant', Employee: person, State: state }, detail || {});
     const tl = ['Updated by the AI assistant|' + state];
     if (!tr) {
@@ -575,32 +633,18 @@
     tr.innerHTML = '<td><b>' + esc2(num) + '</b></td><td>' + esc2(desc) + '</td><td>' + m[0] + '</td><td><span class="pill ' + c + '">' + esc2(state) + '</span></td><td>just now</td>';
     tr.onclick = function () { openDrawer(num, desc, state, c, kv, tl); };
     openDrawer(num, desc, state, c, kv, tl);
+    if (active) { CASES[active.id] = (CASES[active.id] || []).filter(function (r) { return r[0] !== num; }); CASES[active.id].unshift([num, desc, m[0], state, 'just now', detail || {}]); }
   }
 
 
   // ---- Generic portal until verified; personalised view after ----
   const CASES = {
     EMP10234: [
-      ['INC1004217', 'VPN disconnects every few minutes', 'Incident', 'In progress', '12 min ago', { Priority: 'P3', Service: 'VPN', 'Assigned group': 'Network Services' }],
-      ['REQ2000118', '27 inch QHD monitor', 'Request', 'Awaiting approval', '1 hr ago', { Item: '27 inch QHD monitor', 'Deliver to': 'Home office, Pune', Approver: 'Meera Shah (manager)', Stock: 'Restock in 2 to 3 weeks' }],
-      ['ACC5000412', 'Access to finance reporting workspace', 'Access', 'Approval pending', '3 hr ago', { Resource: 'Finance reporting workspace', Level: 'Read', Approvers: 'Line manager, Resource owner' }],
       ['HR3000052', 'Employment verification letter', 'HR', 'Fulfilled', 'Yesterday', { Letter: 'Employment verification', Delivery: 'Company email' }],
       ['FAC4000031', 'Meeting room 4B display not working', 'Facilities', 'Assigned', '2 days ago', { Location: 'HQ, meeting room 4B', Team: 'Workplace Services' }],
       ['LR6000007', 'Laptop refresh, courier swap', 'Request', 'Scheduled', '3 days ago', { Slot: 'Courier, afternoon', 'Pre-swap checks': 'Backup verified, key escrowed' }]],
-    EMP10587: [
-      ['HR3000061', 'Employment letter for a mortgage', 'HR', 'Fulfilled', 'Last week', { Delivery: 'Company email' }],
-      ['FAC4000044', 'Desk booking kiosk offline, floor 3', 'Facilities', 'Assigned', '1 day ago', { Team: 'Workplace Services' }]],
-    EMP10066: [
-      ['ACC5000412', 'Approval: Alex Morgan, finance reporting workspace', 'Access', 'Approval pending', '3 hr ago', { Requester: 'Alex Morgan', Level: 'Read' }],
-      ['REQ2000118', 'Approval: Alex Morgan, 27 inch QHD monitor', 'Request', 'Awaiting approval', '1 hr ago', { Requester: 'Alex Morgan', Reason: 'Non-standard item' }],
-      ['REQ2000140', 'Approval: team laptop refresh', 'Request', 'Awaiting approval', '5 hr ago', { Requester: 'Pune team', Devices: '4' }]],
-    EMP10890: [
-      ['INC1004190', 'Build server VPN gateway timeout', 'Incident', 'In progress', '40 min ago', { Priority: 'P2', Service: 'VPN' }],
-      ['LR6000011', 'Laptop refresh, travel dates pending', 'Request', 'Scheduled', '2 days ago', { Slot: 'To be confirmed' }]],
-    EMP10001: [
-      ['ACC5000430', 'Approval: team access to build dashboard', 'Access', 'Approval pending', '2 hr ago', { Requester: 'Platform team', Level: 'Read' }]],
     EMP12045: [],
-    EMP11002: []
+    EMP10066: []
   };
   const CASE_FLOW = { p: pillClass };
   function fillRows(p) {
@@ -610,33 +654,176 @@
     if (!list.length) { tb.innerHTML = '<tr><td colspan="5" style="color:#617080;padding:18px">No open items yet, ' + esc2(p.name.split(' ')[0]) + '.</td></tr>'; return; }
     list.forEach(function (r, i) {
       const tr = document.createElement('tr'); if (i === 0) tr.className = 'flash';
-      const c = pillClass(r[3]);
-      tr.innerHTML = '<td><b>' + r[0] + '</b></td><td>' + esc2(r[1]) + '</td><td>' + r[2] + '</td><td><span class="pill ' + c + '">' + esc2(r[3]) + '</span></td><td>' + r[4] + '</td>';
-      tr.onclick = function () { openDrawer(r[0], r[1], r[3], c, Object.assign({ Employee: p.name }, r[5]), ['Opened from the portal|' + r[3]]); };
+      const st = ledState(r[0], r[3]);
+      const c = /reject/i.test(st) ? 'p-act' : pillClass(st);
+      tr.innerHTML = '<td><b>' + r[0] + '</b></td><td>' + esc2(r[1]) + '</td><td>' + r[2] + '</td><td><span class="pill ' + c + '">' + esc2(st) + '</span></td><td>' + r[4] + '</td>';
+      tr.onclick = function () { openDrawer(r[0], r[1], st, c, Object.assign({ Employee: p.name }, r[5]), ['Opened from the portal|' + st]); };
       tb.appendChild(tr);
     });
   }
   function setHeader(name, init) {
+    if (!PORTAL_LOCAL) return;
     const me = document.querySelector('.me');
     if (me) { const sp = me.querySelector('span'), av = me.querySelector('.av'); if (sp) sp.textContent = name; if (av) av.textContent = init; }
   }
   function genericView() {
-    const h = Array.prototype.find.call(document.querySelectorAll('h1,h2'), function (n) { return /how can we help/i.test(n.textContent); });
+    if (!PORTAL_LOCAL) return;
+    const h = document.querySelector('.strip h1') || document.querySelector('h1');
     if (h) h.textContent = 'How can we help?';
     setHeader('Guest (not signed in)', '?');
     const tb = document.getElementById('rows');
     if (tb) tb.innerHTML = '<tr><td colspan="5" style="color:#617080;padding:18px">Your items appear here after the assistant verifies your identity.</td></tr>';
     const dr = document.getElementById('drawer'); if (dr) dr.classList.remove('open');
+    ['svd-emp', 'svd-appr'].forEach(function (id) { const c = document.getElementById(id); if (c) c.style.display = 'none'; });
     const o = document.getElementById('onb'), op = document.getElementById('open');
     if (o) o.classList.remove('show'); if (op) op.style.display = '';
     const sub = document.getElementById('sub'); if (sub) sub.textContent = 'Sign in through the assistant to see your requests, approvals and onboarding tasks.';
   }
   function applyPersonaView(p) {
     greet(p);
-    setHeader(p.name, p.name.split(' ').map(function (w) { return w[0]; }).join(''));
+    setHeader(p.name + (p.tag ? ' \u00B7 ' + p.tag : ''), p.name.split(' ').map(function (w) { return w[0]; }).join(''));
     fillRows(p);
     if (p.joiner) { obReset(); obShow(true); obRender(true); } else { obShow(false); const sub = document.getElementById('sub'); if (sub) sub.textContent = 'Signed in as ' + p.name + '. Select an item to see its status.'; }
+    roleScreens(p);
   }
+
+  // ===== v2.0 role screens: employee workspace, manager approvals, shared ledger =====
+  // One browser, three roles: decisions made by the manager are kept in localStorage so that the new joiner's and the
+  // employee's screens show the real outcome when they sign in next.
+  const LKEY = 'svd-ledger-v2';
+  let LED = { decisions: {} };
+  function ledLoad() { try { LED = JSON.parse(localStorage.getItem(LKEY)) || { decisions: {} }; if (!LED.decisions) LED.decisions = {}; } catch (e) { LED = { decisions: {} }; } }
+  function ledSave() { try { localStorage.setItem(LKEY, JSON.stringify(LED)); } catch (e) {} }
+  ledLoad();
+  window.addEventListener('storage', function (e) { if (e.key === LKEY) { ledLoad(); refreshAll(); } });
+  const APPR = [
+    { t: 'RITM0010423', who: 'Rohit Tripathi', item: 'GitHub Enterprise and repo access, PRJ-48213', why: 'New joiner, Day 1', age: 'Today' },
+    { t: 'RITM0010424', who: 'Rohit Tripathi', item: 'Jira and Confluence, PRJ-48213', why: 'New joiner, Day 1', age: 'Today' },
+    { t: 'ACC5000501', who: 'Shailesh Utekar', item: 'Finance reporting workspace, read access', why: 'Quarter-end reporting', age: '1 hr ago' },
+    { t: 'REQ2000502', who: 'Shailesh Utekar', item: '27 inch QHD monitor, home office', why: 'Non-standard, restock 2 to 3 weeks', age: '1 hr ago' },
+    { t: 'SWR7000503', who: 'Neha Kulkarni', item: 'Visio Professional', why: 'Client onboarding diagrams', age: '3 hr ago' }
+  ];
+  function ledState(num, base) {
+    const d = LED.decisions[num];
+    if (d === 'approved') return /^REQ/.test(num) ? 'Approved, in fulfilment' : 'Approved';
+    if (d === 'rejected') return 'Rejected';
+    return base;
+  }
+  function decide(ticket, dec) {
+    ticket = String(ticket || '').toUpperCase();
+    dec = /rej/i.test(dec) ? 'rejected' : 'approved';
+    if (!APPR.some(function (x) { return x.t === ticket; })) return;
+    if (LED.decisions[ticket] === dec) { refreshAll(); return; }
+    LED.decisions[ticket] = dec; ledSave(); refreshAll(ticket);
+  }
+  function refreshAll(flash) {
+    if (!active || !PORTAL_LOCAL) return;
+    if (active.roleKey === 'manager') renderAppr(flash);
+    else if (active.joiner) obRender(false);
+    else fillRows(active);
+  }
+  function mkCard(id) {
+    let c = document.getElementById(id);
+    if (!c) {
+      c = document.createElement('section'); c.className = 'card'; c.id = id;
+      const anchor = document.getElementById('open');
+      if (anchor && anchor.parentNode) anchor.parentNode.insertBefore(c, anchor); else return null;
+    }
+    return c;
+  }
+  const vcss = document.createElement('style');
+  vcss.textContent = [
+    '.svd-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;padding:16px}',
+    '.svd-tile{border:1px solid #dfe5ea;border-radius:6px;padding:14px;cursor:pointer;background:#fff;text-align:left;font:inherit;transition:box-shadow .15s,border-color .15s}',
+    '.svd-tile:hover{border-color:#0b6b5f;box-shadow:0 4px 14px rgba(11,107,95,.14)}',
+    '.svd-tile b{display:block;font-size:14px;margin-bottom:4px;color:#1b2433}.svd-tile span{font-size:12.5px;color:#617080;line-height:1.4}',
+    '.svd-tile i{display:block;font-style:normal;font-size:20px;line-height:24px;height:24px;margin-bottom:6px}',
+    '#svd-diag{padding:0 16px 14px}',
+    '.svd-run{display:flex;align-items:center;gap:10px;color:#425466;font-size:13px;padding:10px 0}',
+    '.svd-run:before{content:"";width:14px;height:14px;border:2px solid #0b6b5f;border-top-color:transparent;border-radius:50%;animation:svdsp .8s linear infinite}',
+    '@keyframes svdsp{to{transform:rotate(360deg)}}',
+    '.svd-dg{border:1px solid #dfe5ea;border-radius:6px;overflow:hidden}',
+    '.svd-dg h3{margin:0;padding:10px 14px;font-size:13px;background:#f6f8fa;border-bottom:1px solid #dfe5ea}',
+    '.svd-dg div.r{display:flex;gap:10px;align-items:center;padding:9px 14px;border-bottom:1px solid #eef1f4;font-size:13px}',
+    '.svd-dg .ic{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;background:#2e9d5d}',
+    '.svd-dg .ic.w{background:#c77700}.svd-dg .rec{padding:10px 14px;background:#fff8e6;font-size:13px;color:#6a4a00}',
+    '.svd-elig{padding:0 16px 14px;display:flex;flex-wrap:wrap;gap:8px}.svd-elig span{font-size:12px;border:1px solid #dfe5ea;border-radius:12px;padding:3px 10px;color:#425466}',
+    '.svd-elig span.n{background:#fff4dc;border-color:#f0d9a4;color:#8a5a00}',
+    '.svd-b{border:1px solid;border-radius:4px;padding:5px 11px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;margin-right:6px}',
+    '.svd-b.a{background:#0b6b5f;border-color:#0b6b5f;color:#fff}.svd-b.r{background:#fff;border-color:#c0392b;color:#c0392b}',
+    '@media(max-width:900px){.svd-tiles{grid-template-columns:1fr}}'
+  ].join('');
+  document.head.appendChild(vcss);
+
+  function renderAppr(flash) {
+    const c = mkCard('svd-appr'); if (!c) return;
+    const pend = APPR.filter(function (x) { return !LED.decisions[x.t]; });
+    c.style.display = '';
+    c.innerHTML = '<h2><span>Approvals waiting for you</span><small>' + pend.length + ' pending, ' + (APPR.length - pend.length) + ' decided</small></h2>' +
+      '<table><thead><tr><th>Number</th><th>Requested by</th><th>Item</th><th>Reason</th><th>Decision</th></tr></thead><tbody>' +
+      APPR.map(function (x) {
+        const d = LED.decisions[x.t];
+        const act = d ? '<span class="pill ' + (d === 'approved' ? 'p-done' : 'p-act') + '">' + (d === 'approved' ? 'Approved' : 'Rejected') + '</span>'
+          : '<button class="svd-b a" data-t="' + x.t + '" data-d="approved">Approve</button><button class="svd-b r" data-t="' + x.t + '" data-d="rejected">Reject</button>';
+        return '<tr class="' + (flash === x.t ? 'flash' : '') + '" style="cursor:default"><td><b>' + x.t + '</b><span class="sub">' + x.age + '</span></td><td>' + esc2(x.who) + '</td><td>' + esc2(x.item) + '</td><td>' + esc2(x.why) + '</td><td>' + act + '</td></tr>';
+      }).join('') + '</tbody></table>';
+    const sub = document.getElementById('sub'); if (sub && active && active.roleKey === 'manager') sub.textContent = pend.length ? pend.length + ' approvals are waiting for you. Decide here or tell the assistant.' : 'All caught up. No approvals are waiting.';
+  }
+  document.addEventListener('click', function (e) {
+    const b = e.target.closest && e.target.closest('#svd-appr .svd-b');
+    if (!b) return;
+    const t = b.getAttribute('data-t'), d = b.getAttribute('data-d');
+    decide(t, d);
+    sendData((d === 'approved' ? 'Approve ' : 'Reject ') + t + (d === 'rejected' ? '. The request is not needed for the project.' : ''), null);
+  }, true);
+
+  function renderEmp() {
+    const c = mkCard('svd-emp'); if (!c) return;
+    c.style.display = '';
+    const e = ENT[active.id] || { items: [] };
+    c.innerHTML = '<h2><span>What do you need today?</span><small>Pick one, or ask the assistant in your own words</small></h2>' +
+      '<div class="svd-tiles">' +
+      '<button class="svd-tile" data-m="My VPN keeps dropping. Can you run a diagnostic?"><i>&#128295;</i><b>Run a diagnostic</b><span>Check VPN, email or sign-in in under a minute. Read-only, nothing changes on your device.</span></button>' +
+      '<button class="svd-tile" data-m="I need a new device. What am I eligible for?"><i>&#128187;</i><b>Request a new device</b><span>Laptop, monitor or dock. Standard items ship in 3 to 5 days, others need your manager.</span></button>' +
+      '<button class="svd-tile" data-m="I need access to the finance reporting workspace, read access, for quarter-end reporting."><i>&#128274;</i><b>Request portal access</b><span>Finance reporting, repos, tools. Access is granted only after approval.</span></button>' +
+      '</div><div id="svd-diag"></div>' +
+      '<div class="svd-elig">' + e.items.map(function (x) { return '<span class="' + (/approval/i.test(x.s) ? 'n' : '') + '">' + esc2(x.n) + '</span>'; }).join('') + '</div>';
+  }
+  document.addEventListener('click', function (e) {
+    const t = e.target.closest && e.target.closest('.svd-tile');
+    if (!t) return;
+    const m = t.getAttribute('data-m');
+    if (!sendData(m, null)) say('Open the chat and type: ' + m);
+  }, true);
+  function showDiag(g) {
+    if (!active || active.roleKey !== 'employee') return;
+    if (!document.getElementById('svd-diag')) renderEmp();
+    const box = document.getElementById('svd-diag'); if (!box) return;
+    box.innerHTML = '<div class="svd-run">Running read-only checks for ' + esc2(g.service || 'the service') + '</div>';
+    setTimeout(function () {
+      const b2 = document.getElementById('svd-diag'); if (!b2) return;
+      b2.innerHTML = '<div class="svd-dg"><h3>Diagnostic result: ' + esc2(g.service || '') + '</h3>' +
+        (g.checks || []).map(function (k) { const ok = k.status === 'ok'; return '<div class="r"><span class="ic' + (ok ? '' : ' w') + '">' + (ok ? '&#10003;' : '!') + '</span><span><b>' + esc2(k.name) + '</b>' + (k.detail ? ' <span class="sub" style="display:inline"> ' + esc2(k.detail) + '</span>' : '') + '</span></div>'; }).join('') +
+        (g.recommendation ? '<div class="rec"><b>Recommended:</b> ' + esc2(g.recommendation) + '</div>' : '') + '</div>';
+    }, 1300);
+  }
+  document.addEventListener('click', function (e) {
+    const a = e.target.closest && e.target.closest('.links a');
+    if (!a) return;
+    e.preventDefault();
+    const map = { 'report an issue': 'I want to report an issue.', 'request equipment': 'I need a new device. What am I eligible for?', 'request access': 'I need access to a portal.', 'hr help': 'I need an employment letter.', 'workplace services': 'I want to report a workplace problem.' };
+    const m = map[a.textContent.trim().toLowerCase()];
+    if (m && !sendData(m, null)) say('Open the chat and type: ' + m);
+  }, true);
+  function roleScreens(p) {
+    const emp = document.getElementById('svd-emp'), ap = document.getElementById('svd-appr');
+    if (emp) emp.style.display = 'none'; if (ap) ap.style.display = 'none';
+    const op = document.getElementById('open'); if (op && !p.joiner) op.style.display = p.roleKey === 'manager' ? 'none' : '';
+    const dr = document.getElementById('drawer'); if (dr) dr.classList.remove('open');
+    if (p.roleKey === 'employee') renderEmp();
+    if (p.roleKey === 'manager') renderAppr();
+  }
+
   genericView();
 
 
@@ -661,10 +848,10 @@
       d: ['VPN is only issued to a managed device.', 'Switches on when the laptop enrols in Intune at first sign-in.', 'Waiting for the laptop to arrive and enrol.', 'Activates automatically when the laptop enrols.'] },
     { k: 'github', t: 'RITM0010423', n: 'GitHub Enterprise and repo, PRJ-48213', o: 'Engineering Platform',
       s: ['Not requested', 'Awaiting approval', 'Awaiting approval', 'Approved'],
-      d: ['Not requested yet.', 'Waiting for your manager, Vikram Desai.', 'Manager approved. Waiting for the project owner, Neha Kulkarni.', 'Approved. Access is added within the hour.'] },
+      d: ['Not requested yet.', 'Waiting for your manager, Subodh.', 'Manager approved. Waiting for the project owner, Neha Kulkarni.', 'Approved. Access is added within the hour.'] },
     { k: 'jira', t: 'RITM0010424', n: 'Jira and Confluence, PRJ-48213', o: 'Engineering Platform',
       s: ['Not requested', 'Awaiting approval', 'Approved', 'Approved'],
-      d: ['Not requested yet.', 'Waiting for your manager, Vikram Desai.', 'Approved by your manager.', 'Approved and provisioned.'] },
+      d: ['Not requested yet.', 'Waiting for your manager, Subodh.', 'Approved by your manager.', 'Approved and provisioned.'] },
     { k: 'badge', t: 'FAC0004418', n: 'Office access badge, Pune', o: 'Workplace Services',
       s: ['Not requested', 'Action needed', 'In progress', 'Ready for collection'],
       d: ['Not requested yet.', 'Needs a passport size photo before the badge can be printed.', 'Photo received. Badge is being printed.', 'Ready at Reception, Floor 1. Carry a government photo ID.'] },
@@ -674,7 +861,7 @@
   ];
   let obStage = 0, obPrev = {}, obPhoto = false;
   function obPill(s) {
-    return /action needed/i.test(s) ? 'p-act' : /await|pending|waiting|due in/i.test(s) ? 'p-wait'
+    return /action needed|reject/i.test(s) ? 'p-act' : /await|pending|waiting|due in/i.test(s) ? 'p-wait'
       : /approved|resolved|ready for|packed|dispatched|out for delivery/i.test(s) ? 'p-done' : /progress/i.test(s) ? 'p-prog' : 'p-new';
   }
   function obRender(flashAll) {
@@ -687,6 +874,12 @@
         if (!obPhoto) { st = 'Action needed'; dt = 'Needs a passport size photo before the badge can be printed. Use the photo screen.'; }
         else if (obStage < 3) { st = 'In progress'; dt = 'Photo received. The badge is being printed.'; }
       }
+      if ((it.k === 'github' || it.k === 'jira') && obStage >= 1) {
+        const dec = LED.decisions[it.t];
+        if (dec === 'approved') { st = 'Approved'; dt = 'Approved by Subodh. Access is added within the hour.'; }
+        else if (dec === 'rejected') { st = 'Rejected'; dt = 'Rejected by Subodh. Ask the assistant to raise it again with a reason.'; }
+        else { st = 'Awaiting approval'; dt = 'Waiting for your manager, Subodh. You will see it here as soon as he decides.'; }
+      }
       if (/^(approved|resolved|ready for|packed|dispatched|out for delivery)/i.test(st)) ready++;
       const tr = document.createElement('tr');
       if (flashAll || (obPrev[it.k] && obPrev[it.k] !== st)) tr.className = 'flash';
@@ -696,7 +889,7 @@
         '<td><span class="pill ' + obPill(st) + '">' + esc2(st) + '</span></td>';
       tr.onclick = function () {
         const num = it.t && obStage >= 1 ? it.t : '';
-        openDrawer(num || it.n, it.n, st, obPill(st), { Owner: it.o, Ticket: num || 'No ticket needed', Employee: 'Ananya Rao', 'Project code': 'PRJ-48213' }, [dt + '|' + st]);
+        openDrawer(num || it.n, it.n, st, obPill(st), { Owner: it.o, Ticket: num || 'No ticket needed', Employee: (active ? active.name : 'Rohit Tripathi'), 'Project code': 'PRJ-48213' }, [dt + '|' + st]);
         if (num) sendData('Status of ' + num, { svdAction: 'svd_case_open', caseNumber: num, caseTitle: it.n, caseState: st });
         else sendData('What do I need to do for ' + it.n + '?');
       };
@@ -717,17 +910,44 @@
     if (o) o.classList.toggle('show', !!on);
     if (op) op.style.display = on ? 'none' : '';
     const t = document.getElementById('onb-t'); if (t && active) t.textContent = 'Your first day, ' + active.name.split(' ')[0];
-    const sb = document.getElementById('onb-s'); if (sb) sb.textContent = 'Manager: Vikram Desai   |   Start date: ' + dd(0);
+    const sb = document.getElementById('onb-s'); if (sb) sb.textContent = 'Manager: Subodh   |   Start date: ' + dd(0);
     const sub = document.getElementById('sub'); if (sub && active) sub.textContent = on ? 'Welcome to Acme. Here is where your setup stands.' : 'Signed in as ' + active.name + '.';
   }
   function obFromText(text) {
     let st = obStage;
     if (/(photo|picture).{0,40}(received|uploaded|submitted)|uploaded your (badge )?photo|got your photo|received your photo/i.test(text)) obPhoto = true;
     if (/RITM0010421|RITM0010422|RITM0010423|RITM0010424|INC0045872|FAC0004418|RITM\s?00104|\braised\b|all (the )?requests/i.test(text) && st < 1) st = 1;
-    if (st >= 1 && /dispatched|AWB|manager (has )?approved|approved by your manager|licence (is )?assigned/i.test(text)) st = Math.max(st, 2);
+    if (st >= 1 && /dispatch|AWB|manager (has )?approved|approved by your manager|licence (is )?assigned/i.test(text)) st = Math.max(st, 2);
     if (st >= 1 && /out for delivery|mailbox is ready|resolved|ready (for collection|at reception)|provisioned|project owner (has )?approved/i.test(text)) st = 3;
     if (st !== obStage) { obStage = st; }
     obRender(false);
+  }
+  function obApply(o) {
+    if (!o || !active || !active.joiner) return;
+    if (o.photo) obPhoto = true;
+    let st = obStage;
+    if (typeof o.stage === 'number') st = Math.max(st, o.stage);
+    if (o.laptop) st = Math.max(st, 2);
+    if (o.photo && st < 1) st = 1;
+    obStage = st; obRender(false); renderProfile();
+  }
+  function userApply(id) {
+    const p = PERSONAS.find(function (x) { return x.id === id; });
+    if (p && (!active || active.id !== p.id)) { active = p; applyPersonaView(p); renderProfile(); }
+  }
+  function caseApply(c) {
+    if (!c || !c.number || !active || active.roleKey === 'manager') return;
+    const num = String(c.number);
+    const type = c.type || 'Request';
+    const kv = { Source: 'Created by the AI assistant' };
+    if (c.approval) { kv.Approver = (c.approver || 'Subodh') + ' (manager)'; kv.Note = 'Not granted or shipped until the approval is complete'; }
+    CASES[active.id] = (CASES[active.id] || []).filter(function (r) { return r[0] !== num; });
+    CASES[active.id].unshift([num, String(c.title || 'Request'), type, c.state || 'Submitted', 'just now', kv]);
+    fillRows(active);
+    const st = ledState(num, c.state || 'Submitted');
+    openDrawer(num, String(c.title || 'Request'), st, /reject/i.test(st) ? 'p-act' : pillClass(st), Object.assign({ Employee: active.name }, kv), ['Updated by the AI assistant|' + st]);
+    const box = document.getElementById('open');
+    if (box && box.scrollIntoView) { try { box.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) {} }
   }
   function obReset() { obStage = 0; obPrev = {}; obPhoto = false; }
 
@@ -743,12 +963,17 @@
     if (!text || text === seenText) return;
     seenText = text;
     // 1. verification -> open the profile
-    if (/(verified|identity (is )?confirmed|(thank(s| you)|welcome|hi|hello),?\s+(ananya|alex|priya|meera|rahul|sanjay|daniel))/i.test(text) && !/not (been )?verified|could not|locked|unable/i.test(text)) {
+    if (/(verified|identity (is )?confirmed|(thank(s| you)|welcome|hi|hello),?\s+(rohit|shailesh|subodh))/i.test(text) && !/not (been )?verified|could not|locked|unable/i.test(text)) {
       const byName = PERSONAS.find(function (p) { return text.indexOf(p.name.split(' ')[0]) >= 0; });
       const who = candidate || byName;
       if (who && (!active || active.id !== who.id)) { active = who; applyPersonaView(who); renderProfile(); }
     }
     if (!active) return;
+    if (active.roleKey === 'manager') {
+      const mt = text.match(/\b(RITM\d{7}|ACC\d{7}|REQ\d{7}|SWR\d{7})\b/);
+      if (mt && /\b(is|has been|was)\s+(now\s+)?(approved|rejected)\b/i.test(text) && !/waiting|pending|first/i.test(text)) decide(mt[1], /rejected/i.test(text) ? 'rejected' : 'approved');
+      return;
+    }
     if (active.joiner) { obFromText(text); renderProfile(); return; }
     // 2. item states
     const st = stateFrom(text);
@@ -791,36 +1016,75 @@
 
   const frag = {};
   let hookWorks = false;
+  const handledTexts = [];
+  function norm(t) { return String(t || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+  function remember(t) { const n = norm(t); if (n) { handledTexts.push(n); if (handledTexts.length > 80) handledTexts.shift(); } }
+  function wasHandled(line) { const n = norm(line); return !n || handledTexts.some(function (h) { return h.indexOf(n) >= 0; }); }
+
+  function onChatEvent(ev) {
+    hookWorks = true;
+    try {
+      const p = ev && ev.payload;
+      const inc = ev && ev.type === 'webchat/incoming-message';
+      const app = p && p.data && p.data._cognigy && p.data._cognigy._app;
+      if (app && app.url && inc) showXappSms(app.url, (app.overlaySettings && app.overlaySettings.screenTitle) || 'your form');
+      const d = (p && p.data) || {};
+      if (inc && d.svdUser) { userApply(d.svdUser.id); fwd({ svd: 'user', id: d.svdUser.id }); }
+      if (inc && d.svdCase) { caseApply(d.svdCase); fwd({ svd: 'case', c: d.svdCase }); }
+      if (inc && d.svdOnb) { obApply(d.svdOnb); fwd({ svd: 'onb', ob: d.svdOnb }); }
+      if (inc && d.svdApproval) { decide(d.svdApproval.ticket, d.svdApproval.decision, d.svdApproval); fwd({ svd: 'appr', a: d.svdApproval }); }
+      if (inc && d.svdDiag) { showDiag(d.svdDiag); fwd({ svd: 'diag', g: d.svdDiag }); }
+      if (!p || typeof p.text !== 'string') return;
+      if (ev.type === 'webchat/outgoing-message') { handleOutgoing(p.text); remember(p.text); fwd({ svd: 'out', text: p.text }); }
+      else if (inc) {
+        const mid = d._cognigy && d._cognigy._messageId;
+        if (!p.text) return;
+        remember(p.text);
+        if (mid) { frag[mid] = (frag[mid] || '') + p.text; handleBot(frag[mid]); fwd({ svd: 'bot', text: frag[mid] }); } else { handleBot(p.text); fwd({ svd: 'bot', text: p.text }); }
+      }
+    } catch (e) { console.warn('[Service desk demo] bridge error', e); }
+  }
+  if (!IS_PORTAL_FRAME) window.addEventListener('svd-chat-event', function (e) { onChatEvent(e.detail); });
   function hookChat(tries) {
+    if (IS_PORTAL_FRAME) return;
     tries = tries || 0;
     const wc = webchat || window.__svdWebchat;
     if (!wc || typeof wc.registerAnalyticsService !== 'function') {
-      if (tries > 120) return console.warn('[Service desk demo] analytics hook not available');
+      if (tries > 40) return;
       return setTimeout(function () { hookChat(tries + 1); }, 500);
     }
-    wc.registerAnalyticsService(function (ev) {
-      hookWorks = true;
-      try {
-        const p = ev && ev.payload;
-        // xApp link from the flow: show it on the demo phone so it can be opened on a real phone too
-        const app = p && p.data && p.data._cognigy && p.data._cognigy._app;
-        if (app && app.url && ev.type === 'webchat/incoming-message') showXappSms(app.url, (app.overlaySettings && app.overlaySettings.screenTitle) || 'your form');
-        if (!p || typeof p.text !== 'string') return;
-        if (ev.type === 'webchat/outgoing-message') handleOutgoing(p.text);
-        else if (ev.type === 'webchat/incoming-message') {
-          const mid = p.data && p.data._cognigy && p.data._cognigy._messageId;
-          if (!p.text) return;
-          if (mid) { frag[mid] = (frag[mid] || '') + p.text; handleBot(frag[mid]); } else { handleBot(p.text); }
-        }
-      } catch (e) { console.warn('[Service desk demo] bridge error', e); }
-    });
+    if (wc.__svdTapped) return;      // already tapped by the early hook
+    wc.registerAnalyticsService(onChatEvent);
   }
   hookChat();
 
+  // Fallback: read the chat window itself (works for any chat on the page). Lines already seen through events are skipped.
+  (function domWatch() {
+    if (IS_PORTAL_FRAME) return;
+    let prev = '';
+    setInterval(function () {
+      try {
+        const roots = document.querySelectorAll('.webchat-root'); if (!roots.length) return;
+        const txt = Array.prototype.map.call(roots, function (r) { return r.innerText || ''; }).join('\n');
+        if (txt === prev) return;
+        const fresh = txt.indexOf(prev) === 0 ? txt.slice(prev.length) : txt;
+        prev = txt;
+        fresh.split(/\n+/).forEach(function (line) {
+          line = line.trim();
+          if (line.length < 3 || /^\d{1,2}:\d{2}( [AP]M)?$/i.test(line) || /^(Infosys|Powered by|At \d|IT Service Desk$|Chat )/i.test(line)) return;
+          if (/^[\d\s+()-]{10,}$/.test(line)) { handleOutgoing(line); return; }
+          if (wasHandled(line)) return;
+          handleBot(line); fwd({ svd: 'bot', text: line });
+        });
+      } catch (e) {}
+    }, 700);
+  })();
+
   // Portal clicks go to the agent with structured data (handled by the flow's Afterwards > Portal action branch)
   function sendData(text, data) {
+    if (IS_PORTAL_FRAME) { try { window.parent.postMessage({ svdSend: { text: text, data: data } }, '*'); } catch (e) {} return true; }
     const wc = webchat || window.__svdWebchat;
-    if (!wc) return false;
+    if (!wc || extChat) { if (domSend(text)) return true; if (!wc) return false; }
     try { wc.open(); } catch (e) {}
     setTimeout(function () { wc.sendMessage(text, data); }, 300);
     return true;
@@ -858,12 +1122,37 @@
   function updateStat() {
     const el = panel.querySelector('.stat');
     if (!el) return;
-    el.textContent = hookWorks ? 'Chat link: connected' : (document.querySelector('.webchat-root') ? 'Chat link: reading the page (fallback)' : 'Chat link: no chat found yet');
+    el.textContent = hookWorks ? 'Chat link: connected' : (document.querySelector('.webchat-root') ? 'Chat link: reading the chat window' : 'Chat link: waiting for the chat');
   }
   setInterval(updateStat, 1000);
+  setInterval(function () { try { tab.textContent = 'Demo helper ' + (hookWorks ? '\u25CF' : '\u25CB'); } catch (e) {} }, 1500);
+
+  window.addEventListener('message', function (ev) {
+    const d = ev && ev.data; if (!d || typeof d !== 'object') return;
+    if (IS_PORTAL_FRAME) {
+      if (d.svd === 'appr') decide(d.a.ticket, d.a.decision, d.a);
+      else if (d.svd === 'diag') showDiag(d.g);
+      else if (d.svd === 'user') userApply(d.id);
+      else if (d.svd === 'case') caseApply(d.c);
+      else if (d.svd === 'onb') obApply(d.ob);
+      else if (d.svd === 'bot') handleBot(d.text);
+      else if (d.svd === 'out') handleOutgoing(d.text);
+      else if (d.svd === 'manual') { active = PERSONAS.find(function (p) { return p.id === d.id; }) || active; if (active) { applyPersonaView(active); renderProfile(); } }
+      else if (d.svd === 'adv') { if (active && active.joiner) { obStage = Math.min(3, obStage + 1); obRender(false); } }
+    } else if (!IN_FRAME && d.svdSend) {
+      const wc = webchat || window.__svdWebchat;
+      if (wc) { try { wc.open(); } catch (e) {} setTimeout(function () { wc.sendMessage(d.svdSend.text, d.svdSend.data); }, 300); }
+    }
+  });
 
   window.__svdBridge = { handleBot: handleBot, handleOutgoing: handleOutgoing, setActive: function (id) { active = PERSONAS.find(function (p) { return p.id === id; }); renderProfile(); } };
-})();
+  window.__svdBanner && window.__svdBanner('Service desk demo helper v2.0.0 loaded');
+};
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.__svdMainFn); else window.__svdMainFn();
+} catch (err) {
+  console.error('[Service desk demo] crashed', err);
+  window.__svdBanner && window.__svdBanner('Service desk demo crashed: ' + (err && err.message), true);
+}
 
 </script>
 </body>
