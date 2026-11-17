@@ -212,7 +212,7 @@
 </script>
 <script charset="utf-8" src="webchat.js"></script>
 <script>
-/* Service desk demo v2.1.3: roles, screens and chat link (same code as the Tampermonkey script, so the page works on its own). */
+/* Service desk demo v2.1.4: roles, screens and chat link (same code as the Tampermonkey script, so the page works on its own). */
 /*
   HOW TO USE
   1. In Tampermonkey: Dashboard > + (new script) > select all > paste this file > File > Save.
@@ -229,7 +229,7 @@
 
 /* v1.6.1: shows a banner so you can see that the script is running. Green = loaded, red = it crashed (with the reason). */
 (function () {
-  try { console.log('[Service desk demo] v2.1.3 starting on', location.href); } catch (e) {}
+  try { console.log('[Service desk demo] v2.1.4 starting on', location.href); } catch (e) {}
   function banner(msg, bad) {
     if (window.top !== window.self) return;
     try {
@@ -984,6 +984,11 @@ window.__svdMainFn = function () {
       try { console.log('[Service desk demo] verified text -> persona', who && who.id, recent ? '(kept, svdUser seen)' : ''); } catch (e) {}
       if (who && (!active || active.id !== who.id)) { active = who; applyPersonaView(who); renderProfile(); }
     }
+    // The approvals list is only ever read to a manager, so it identifies the manager even if the greeting was missed.
+    if (/approval requests? (are )?waiting|approvals? (are )?waiting|approve or reject/i.test(text) && (!active || active.roleKey !== 'manager')) {
+      const mgr = PERSONAS.find(function (p) { return p.roleKey === 'manager'; });
+      if (mgr) { try { console.log('[Service desk demo] approvals text -> persona', mgr.id); } catch (e) {} active = mgr; applyPersonaView(mgr); renderProfile(); }
+    }
     if (!active) return;
     if (active.roleKey === 'manager') {
       const mt = text.match(/\b(RITM\d{7}|ACC\d{7}|REQ\d{7}|SWR\d{7})\b/);
@@ -1136,6 +1141,37 @@ window.__svdMainFn = function () {
     mo.observe(document.body, { childList: true, subtree: true, characterData: true });
   })();
 
+  // Voice (NiCEview call widget): the widget lives in its own frame and relays every Voice Gateway message
+  // to this page as postMessage {type:'NV_WEBRTC_METADATA', detail}. Read the svd* data and the transcript from it.
+  (function voiceMeta() {
+    if (IS_PORTAL_FRAME) return;
+    const KEYS = ['svdUser', 'svdCase', 'svdOnb', 'svdApproval', 'svdDiag'];
+    function dig(o, depth, out) {
+      if (!o || typeof o !== 'object' || depth > 4) return;
+      if (typeof o === 'string') return;
+      KEYS.forEach(function (k) { if (o[k] && typeof o[k] === 'object') out[k] = o[k]; });
+      Object.keys(o).forEach(function (k) { const v = o[k]; if (v && typeof v === 'object') dig(v, depth + 1, out); else if (typeof v === 'string' && v.charAt(0) === '{' && v.indexOf('svd') >= 0) { try { dig(JSON.parse(v), depth + 1, out); } catch (e) {} } });
+    }
+    function texts(o, depth, out) {
+      if (!o || depth > 4) return;
+      if (typeof o === 'string') return;
+      ['text', 'transcript', 'message'].forEach(function (k) { if (typeof o[k] === 'string' && o[k].length > 3) out.push(o[k]); });
+      Object.keys(o).forEach(function (k) { if (o[k] && typeof o[k] === 'object') texts(o[k], depth + 1, out); });
+    }
+    let logged = 0;
+    window.addEventListener('message', function (e) {
+      const m = e && e.data;
+      if (!m || m.type !== 'NV_WEBRTC_METADATA') return;
+      hookWorks = true;
+      const v = m.detail; if (!v) return;
+      try { if (logged++ < 40) console.log('[Service desk demo] voice metadata', JSON.stringify(v).slice(0, 300)); } catch (x) {}
+      const found = {}; dig(v, 0, found);
+      if (Object.keys(found).length) onChatEvent({ type: 'webchat/incoming-message', payload: { text: null, data: found } });
+      const ts = []; texts(v._transcription || v, 0, ts);
+      ts.forEach(function (t) { const d = despell(t); if (!wasHandled(d)) { handleOutgoing(d); handleBot(d); fwd({ svd: 'bot', text: d }); remember(d); } });
+    });
+  })();
+
   // Portal clicks go to the agent with structured data (handled by the flow's Afterwards > Portal action branch)
   function sendData(text, data) {
     if (IS_PORTAL_FRAME) { try { window.parent.postMessage({ svdSend: { text: text, data: data } }, '*'); } catch (e) {} return true; }
@@ -1181,7 +1217,7 @@ window.__svdMainFn = function () {
     el.textContent = hookWorks ? 'Chat link: connected' : (document.querySelector('.webchat-root') ? 'Chat link: reading the chat window' : 'Chat link: waiting for the chat');
   }
   setInterval(updateStat, 1000);
-  setInterval(function () { try { tab.textContent = 'Demo helper v2.1.3 ' + (hookWorks ? '\u25CF' : '\u25CB'); } catch (e) {} }, 1500);
+  setInterval(function () { try { tab.textContent = 'Demo helper v2.1.4 ' + (hookWorks ? '\u25CF' : '\u25CB'); } catch (e) {} }, 1500);
 
   window.addEventListener('message', function (ev) {
     const d = ev && ev.data; if (!d || typeof d !== 'object') return;
@@ -1202,7 +1238,7 @@ window.__svdMainFn = function () {
   });
 
   window.__svdBridge = { handleBot: handleBot, handleOutgoing: handleOutgoing, setActive: function (id) { active = PERSONAS.find(function (p) { return p.id === id; }); renderProfile(); } };
-  window.__svdBanner && window.__svdBanner('Service desk demo helper v2.1.3 loaded');
+  window.__svdBanner && window.__svdBanner('Service desk demo helper v2.1.4 loaded');
 };
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', window.__svdMainFn); else window.__svdMainFn();
 } catch (err) {
